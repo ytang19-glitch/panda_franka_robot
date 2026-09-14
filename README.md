@@ -49,6 +49,36 @@ The repository itself is the ROS 2 workspace. Build and run from `~/panda_franka
 | [UPSTREAM_README.md](UPSTREAM_README.md) | Preserved original documentation |
 | [LICENSE](LICENSE) | Original Apache 2.0 license |
 
+
+```bash
+panda_robot_ws/
+├── src/
+│   ├── panda_description/          # URDF/Xacro robot model and Gazebo simulation resources
+│   │   ├── urdf/                   # Panda URDF files (arm, sensors, Gazebo, ros2_control)
+│   │   ├── meshes/                 # Robot meshes (visual / collision)
+│   │   ├── models/                 # Gazebo scene models (coffee table, bins)
+│   │   ├── world/                  # Simulation worlds (scene.world: colored blocks, table, bins)
+│   │   ├── config/                 # ros_gz_bridge configuration
+│   │   ├── rviz/                   # RViz display configuration
+│   │   └── launch/                 # Launch files (display.launch.xml, gazebo.launch.xml)
+│   ├── panda_controller/           # ros2_control controller configuration and test nodes
+│   │   ├── config/                 # Controller YAML files (arm, gripper, joint state broadcaster)
+│   │   ├── test_panda_controller/  # Test nodes (test_controller.cpp)
+│   │   └── launch/                 # Controller launch files (controller, test_controller)
+│   ├── panda_moveit/               # MoveIt 2 motion planning configuration
+│   │   ├── config/                 # SRDF, kinematics, planners, joint limits, and other settings
+│   │   ├── launch/                 # moveit.launch.py
+│   │   └── rviz/                   # MoveIt RViz configuration
+│   ├── panda_vision/               # OpenCV color detection node (Python)
+│   │   └── panda_vision/           # Color detection source code (color_detector.py)
+│   ├── panda_commander/            # C++ pick-and-place coordinator node
+│   │   └── src/                    # panda_commander.cpp
+│   └── panda_bringup/              # Unified launch package for the complete system
+│       └── launch/                 # pick_and_place and pick_and_place_commander launch files
+└── README.md                       # This document
+```
+
+
 ## Installation
 
 ### Environment
