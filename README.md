@@ -46,12 +46,13 @@ The repository itself is the ROS 2 workspace. Build and run from `~/panda_franka
 | [src/panda_vision/](src/panda_vision/) | Python package containing `panda_vision/color_detector.py` |
 | [src/panda_commander/](src/panda_commander/) | C++ task implementation in `src/panda_commander.cpp` |
 | [src/panda_bringup/](src/panda_bringup/) | System and commander launch files |
+| [src/panda_nmpc/](src/panda_nmpc/) | Python ROS 2 package for NMPC development; currently reads and logs seven joint angles from `/joint_states` |
 | [UPSTREAM_README.md](UPSTREAM_README.md) | Preserved original documentation |
 | [LICENSE](LICENSE) | Original Apache 2.0 license |
 
 
-```bash
-panda_robot_ws/
+```text
+panda_franka_robot/
 ├── src/
 │   ├── panda_description/          # URDF/Xacro robot model and Gazebo simulation resources
 │   │   ├── urdf/                   # Panda URDF files (arm, sensors, Gazebo, ros2_control)
@@ -73,8 +74,17 @@ panda_robot_ws/
 │   │   └── panda_vision/           # Color detection source code (color_detector.py)
 │   ├── panda_commander/            # C++ pick-and-place coordinator node
 │   │   └── src/                    # panda_commander.cpp
-│   └── panda_bringup/              # Unified launch package for the complete system
-│       └── launch/                 # pick_and_place and pick_and_place_commander launch files
+│   ├── panda_bringup/              # Unified launch package for the complete system
+│   │   └── launch/                 # pick_and_place and pick_and_place_commander launch files
+│   └── panda_nmpc/                 # Python package for NMPC development (joint-state subscriber)
+│       ├── panda_nmpc/             # Python module
+│       │   ├── __init__.py         # Python package marker
+│       │   └── nmpc_node.py        # Reads and logs seven Panda joint angles
+│       ├── resource/              # ROS 2 package discovery marker
+│       ├── test/                  # Copyright and Python style checks
+│       ├── package.xml            # ROS package metadata and dependencies
+│       ├── setup.py               # Installs the nmpc_node executable
+│       └── setup.cfg              # ROS 2 executable installation paths
 └── README.md                       # This document
 ```
 
@@ -109,7 +119,7 @@ Use the [original instructions](https://github.com/heimizhou1314/Franka-Panda-Ro
 
 ### 2. Clone This Repository
 
-The six packages are already included here, so no copying is required to run this version.
+The six inherited packages and the new `panda_nmpc` package are already included here, so no copying is required to run this version.
 
 ```bash
 cd ~
@@ -286,6 +296,12 @@ Study the C++ task sequence and MoveIt `MoveGroupInterface` calls. Identify wher
 
 Study how `pick_and_place.launch.xml` brings up the system and how `pick_and_place_commander.launch.xml` starts a selected-color task. Keep system readiness checks separate from task execution.
 
+### New Extension: NMPC Feedback — `panda_nmpc`
+
+The added [panda_nmpc package](src/panda_nmpc/) establishes a ROS 2 feedback connection for future nonlinear model predictive control (NMPC). Its [nmpc_node.py](src/panda_nmpc/panda_nmpc/nmpc_node.py) subscribes to `/joint_states`, matches `panda_joint1` through `panda_joint7` by name, and logs their positions in radians once per second.
+
+The current node does not run a CasADi optimizer or publish arm commands. It is launched separately from `panda_bringup`. See [Development 2](#development-2-create-a-python-ros-2-node-for-nmpc) for build, launch, and troubleshooting instructions. Runtime behavior has not been verified in this documentation update.
+
 ### Make and Record Your Own Changes
 
 Edit the source directly in this repository and rebuild here. For example:
@@ -322,6 +338,7 @@ Preserve upstream attribution and include change notices in modified upstream fi
 | `panda_vision` | Color detection, coordinate estimation, and publication |
 | `panda_commander` | Pick-and-place task logic |
 | `panda_bringup` | System and task launch integration |
+| [`panda_nmpc`](src/panda_nmpc/) | Joint-state feedback subscriber for future NMPC development; no optimization or motion commands yet |
 
 ## Key Technologies
 
@@ -417,7 +434,7 @@ Python code
 
 ## Development 2: Create a Python ROS 2 Node for NMPC
 
-This tutorial establishes the feedback connection to the simulated Panda. The example below **only reads joint angles**: it does not solve an NMPC problem or command motion. Follow these steps locally to create the package; this documentation update does not install a package on your computer.
+This tutorial establishes the feedback connection to the simulated Panda. The example below **only reads joint angles**: it does not solve an NMPC problem or command motion. The [package is now included in this repository](src/panda_nmpc/). After pulling the latest changes, skip package creation and start at Step 3 to build it. Steps 1–2 explain how the package and node were created.
 
 ### What is a node, and where does the Python file go?
 
@@ -438,7 +455,7 @@ The repeated `panda_nmpc/panda_nmpc` is intentional: the outer directory is the 
 
 Use a terminal with the system ROS Python environment. If the earlier virtual environment is active (the prompt shows `(nmpc)`), run `deactivate` first. This subscriber does not need CasADi.
 
-Run package creation only once. If `src/panda_nmpc` already exists, inspect it and continue with its files instead.
+This repository already contains `src/panda_nmpc`; do not recreate it. The command below is for reference when creating the package in a separate workspace.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
