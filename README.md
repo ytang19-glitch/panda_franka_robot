@@ -1,21 +1,21 @@
 # panda_franka_robot
 
-Franka Panda 视觉分拣仿真学习与二次开发项目，使用 ROS 2 Jazzy、Gazebo Harmonic、MoveIt 2 和 OpenCV。
+A Franka Panda vision-guided sorting simulation project for learning and further development, using ROS 2 Jazzy, Gazebo Harmonic, MoveIt 2, and OpenCV.
 
-## Reference / 来源与致谢
+## Reference and acknowledgments
 
-本项目基于 **heimizhou1314 / zjs** 的 [Franka-Panda-Robot-Project](https://github.com/heimizhou1314/Franka-Panda-Robot-Project)。原始机器人模型、控制器配置、视觉检测、MoveIt 配置和抓取程序来自该项目，并非本仓库从零实现。
+This project is based on [Franka-Panda-Robot-Project](https://github.com/heimizhou1314/Franka-Panda-Robot-Project) by **heimizhou1314 / zjs**. The original robot models, controller configuration, vision detection, MoveIt configuration, and pick-and-place program come from that project.
 
-- 上游基线提交：`1eb59f4272fc6f98a4f828ec6a2c1f5b117edec4`
-- 原始说明：[UPSTREAM_README.md](UPSTREAM_README.md)，保留原作者开发过程和演示链接；运行步骤以本 README 为准。
-- 保留原始 [Apache 2.0 LICENSE](LICENSE) 及源码署名。上游对 Franka 模型来源的说明也保留在原始文档中。
-- 本版本修改：重写安装步骤；移除 Gazebo 仿真中额外的独立 controller manager；移除任务启动时重复激活控制器的命令。修改文件内带有修改说明。
+- Upstream baseline commit: `1eb59f4272fc6f98a4f828ec6a2c1f5b117edec4`.
+- Original documentation: [UPSTREAM_README.md](UPSTREAM_README.md), preserved in its original language with the author's development notes and demonstration links. Use this README for this version's operating instructions.
+- The original [Apache 2.0 LICENSE](LICENSE) and source attribution are preserved. The upstream documentation also retains the attribution for the Franka models.
+- Changes in this version: rewritten setup instructions, removal of the extra standalone controller manager in Gazebo simulation, and removal of redundant controller activation commands when starting the task. Modified source files include change notices.
 
-## 0. Start from the original project / 首先克隆原项目
+## 0. Start from the original project
 
-本项目的学习与开发路线是：**克隆原项目 → 复制六个功能包 → 跑通基线 → 在自己的仓库中继续开发**。
+The learning and development workflow is: **clone the original project → copy the six packages → reproduce the baseline → develop your own version**.
 
-如需从原版开始学习，在一个新的独立工作区中执行：
+To study the original version, use a separate workspace:
 
 ```bash
 cd ~
@@ -24,13 +24,13 @@ mkdir -p ~/panda_upstream_ws/src
 cp -a ~/Franka-Panda-Robot-Project/src/. ~/panda_upstream_ws/src/
 ```
 
-这里的 `git clone` 下载原作者仓库，`cp -a` 将其中的功能包复制到 ROS 2 工作区。原版编译和运行请参考 [原作者说明](https://github.com/heimizhou1314/Franka-Panda-Robot-Project#readme)。本仓库以提交 `1eb59f4272fc6f98a4f828ec6a2c1f5b117edec4` 为基线；上述克隆默认获取上游最新版本。
+Here, `git clone` downloads the original repository, and `cp -a` copies its packages into a ROS 2 workspace. Follow the [upstream instructions](https://github.com/heimizhou1314/Franka-Panda-Robot-Project#readme) to build and run that version. This repository uses commit `1eb59f4272fc6f98a4f828ec6a2c1f5b117edec4` as its baseline; the clone command above retrieves the latest upstream version by default.
 
-下面第 1–5 步用于运行自己的 `panda_franka_robot` 版本。它已经包含复制的源码和本 README 列出的启动修复，无需再用原版源码覆盖它。两个工作区分别使用，启动前只 source 当前要运行的工作区。
+Steps 1–5 below run the `panda_franka_robot` version. It already includes the copied source and the startup fixes listed above. Do not overwrite those fixes with the original source. Use the workspaces separately and source only the workspace you intend to run.
 
-## 1. First: git clone / 首先下载项目
+## 1. Clone this repository
 
-在 Ubuntu 终端执行：
+Run in an Ubuntu terminal:
 
 ```bash
 cd ~
@@ -38,7 +38,14 @@ git clone https://github.com/ytang19-glitch/panda_franka_robot.git
 cd ~/panda_franka_robot
 ```
 
-## 2. Copy the six packages / 复制六个功能包
+If this repository is already cloned at that location, update it instead:
+
+```bash
+cd ~/panda_franka_robot
+git pull --ff-only origin main
+```
+
+## 2. Copy the six packages
 
 ```bash
 mkdir -p ~/panda_robot_ws/src
@@ -47,22 +54,22 @@ cp -a src/{panda_description,panda_controller,panda_moveit,panda_vision,panda_co
 ls ~/panda_robot_ws/src
 ```
 
-六个包应直接放在 `~/panda_robot_ws/src/` 下，不要把它们放进另一个 `panda_bringup` 文件夹。`cp -a` 会覆盖目标中同名的文件；如有自己的修改，请先备份。避免同时保留另一套同名包，否则 `colcon` 可能报重复包名。
+Place all six packages directly under `~/panda_robot_ws/src/`. Do not put them inside another `panda_bringup` directory. The `cp -a` command overwrites files with matching names, so back up any local changes first. Avoid keeping duplicate copies of the same packages in the workspace because `colcon` may report duplicate package names.
 
-| Package | 功能 |
+| Package | Purpose |
 | --- | --- |
-| `panda_description` | URDF/Xacro、模型、相机和 Gazebo 场景 |
-| `panda_controller` | 控制器配置与 spawner |
-| `panda_moveit` | MoveIt 2 规划配置与 RViz |
-| `panda_vision` | OpenCV 色块检测 |
-| `panda_commander` | 抓取与放置任务程序 |
-| `panda_bringup` | 整套系统和任务启动文件 |
+| `panda_description` | URDF/Xacro, models, camera, and Gazebo scene |
+| `panda_controller` | Controller configuration and spawners |
+| `panda_moveit` | MoveIt 2 planning configuration and RViz |
+| `panda_vision` | OpenCV color detection |
+| `panda_commander` | Pick-and-place task program |
+| `panda_bringup` | System and task launch files |
 
-源码仓库与运行工作区是两份副本：修改仓库后，需要再次复制相关包，再在工作区编译。
+The source repository and runtime workspace are separate copies. After editing the repository, copy the relevant packages again and rebuild in the workspace.
 
-## 3. Dependencies and build / 依赖与编译
+## 3. Install dependencies and build
 
-前提：已安装 Ubuntu 24.04 和 ROS 2 Jazzy，且有可用的图形界面。以下命令在运行 ROS 的同一个环境执行；Docker 用户应在容器内使用实际工作区路径，例如 `/panda_ws`。
+Prerequisites: Ubuntu 24.04, ROS 2 Jazzy, and a working graphical interface. Run these commands in the same environment that runs ROS. Docker users should run them inside the container and use their actual workspace path, such as `/panda_ws`.
 
 ```bash
 sudo apt update
@@ -82,7 +89,7 @@ sudo apt install -y \
 source /opt/ros/jazzy/setup.bash
 ```
 
-仅第一次配置 rosdep 时运行 `sudo rosdep init`；已初始化则跳过。
+Run `sudo rosdep init` only when setting up rosdep for the first time. Skip it if rosdep is already initialized.
 
 ```bash
 rosdep update
@@ -92,9 +99,9 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-## 4. Start the simulation / 启动仿真
+## 4. Start the simulation
 
-终端 A：
+Terminal A:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -102,31 +109,31 @@ source ~/panda_robot_ws/install/setup.bash
 ros2 launch panda_bringup pick_and_place.launch.xml
 ```
 
-这个启动文件依次声明 Gazebo、控制器 spawner、MoveIt/RViz 和颜色检测节点。声明顺序不代表它们会等待前一个组件初始化完毕；spawner 会等待 Gazebo 中的 controller manager。
+This launch file declares Gazebo, controller spawners, MoveIt/RViz, and the color detection node. Declaration order does not mean that each component waits for the previous component to finish initializing. The spawners wait for the controller manager inside Gazebo.
 
 ```xml
 <launch>
-    <!-- Gazebo 仿真环境 -->
+    <!-- Gazebo simulation environment -->
     <include file="$(find-pkg-share panda_description)/launch/gazebo.launch.xml" />
 
-    <!-- 机器人控制器 -->
+    <!-- Robot controllers -->
     <include file="$(find-pkg-share panda_controller)/launch/controller.launch.xml" />
 
-    <!-- MoveIt 运动规划 -->
+    <!-- MoveIt motion planning -->
     <include file="$(find-pkg-share panda_moveit)/launch/moveit.launch.py">
         <arg name="is_sim" value="True"/>
     </include>
 
-    <!-- 颜色检测视觉节点 -->
+    <!-- Color detection node -->
     <node pkg="panda_vision" exec="color_detector" name="color_detector" output="screen"/>
 </launch>
 ```
 
-Gazebo 的 `gz_ros2_control` 插件负责创建仿真的 controller manager；`controller.launch.xml` 只启动三个 spawner，不再另启 `ros2_control_node`。
+Gazebo's `gz_ros2_control` plugin creates the simulation controller manager. The `controller.launch.xml` file starts only the three spawners; it does not start an additional `ros2_control_node`.
 
-## 5. Check controllers, then run the task / 检查后运行任务
+## 5. Check the controllers and run the task
 
-终端 B：
+Terminal B:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -135,24 +142,24 @@ ros2 node list
 ros2 control list_controllers -c /controller_manager
 ```
 
-预期只有一个 `/controller_manager`，并且 `joint_state_broadcaster`、`arm_controller`、`gripper_controller` 都是 `active`。如果控制器没有准备好，先排查 Gazebo 插件和启动日志。
+Expect a single `/controller_manager`, with `joint_state_broadcaster`, `arm_controller`, and `gripper_controller` all `active`. If the controllers are not ready, inspect the Gazebo plugin and launch logs first.
 
 ```bash
 ros2 launch panda_bringup pick_and_place_commander.launch.xml target_color:=R
 ```
 
-`R`、`G`、`B` 分别对应红、绿、蓝。任务 launch 不再重复调用 `set_controller_state ... active`；请在控制器就绪后手动启动任务。一次任务结束后按 `Ctrl+C`，再启动下一次。
+Use `R`, `G`, or `B` for red, green, or blue. The task launch no longer repeats `set_controller_state ... active` commands. Start the task manually after the controllers are ready. Press `Ctrl+C` after a task finishes before starting another run.
 
-## 6. Develop my own work / 在此基础上二次开发
+## 6. Develop your own work
 
-本仓库用于 Yujie Tang 的学习和后续独立开发。当前已有改动见上方来源说明；下面是后续计划，尚未实现：
+This repository supports Yujie Tang's learning and further independent development. Existing changes are listed in the acknowledgments above. The following items are future plans, not completed features:
 
-- 先复现颜色检测与抓取放置，记录失败场景。
-- 改进目标定位、抓取位姿和任务状态管理。
-- 增加失败检测与重试，并比较抓取成功率、定位误差和任务耗时。
-- 在稳定基线后，探索视觉伺服、轨迹优化或 NMPC 等方法。
+- Reproduce color detection and pick-and-place behavior, recording failure cases.
+- Improve object localization, grasp poses, and task state management.
+- Add failure detection and retries; compare grasp success rate, localization error, and task duration.
+- After establishing a stable baseline, explore visual servoing, trajectory optimization, or NMPC.
 
-在仓库中修改源码，再复制到工作区运行。例如修改视觉节点：
+Edit source files in the repository, then copy them into the workspace to run them. For example, when modifying the vision node:
 
 ```bash
 cd ~/panda_franka_robot
@@ -166,7 +173,7 @@ source install/setup.bash
 ros2 launch panda_bringup pick_and_place.launch.xml
 ```
 
-停止旧的仿真实例后再启动。验证完成后，将实际修改提交到自己的 GitHub 分支：
+Stop the previous simulation before launching another instance. After validation, commit your actual changes and push them to your GitHub branch:
 
 ```bash
 cd ~/panda_franka_robot
@@ -176,15 +183,15 @@ git commit -m "Improve color detection"
 git push -u origin feature/vision-improvements
 ```
 
-为每次开发记录改动原因和验证结果，保留原作者署名、许可证，并在修改的上游文件中注明改动。
+Record the reason for each change and its validation results. Preserve the original author's attribution and license, and include change notices in modified upstream files.
 
-## Troubleshooting / 常见问题
+## Troubleshooting
 
-- **`Waiting for data on robot_description` 来自独立的 `ros2_control_node`**：确认运行的是本版本的 `controller.launch.xml`，并停止旧的本项目 launch 后重启。该修复移除了多余节点；若 Gazebo 本身仍缺模型，继续检查 `robot_state_publisher`、模型生成和 Gazebo 插件日志。
-- **`cannot activate ... from its current state active`**：控制器已激活，避免再次发激活命令。本版本的任务 launch 已移除这些命令。
-- **`list_controllers` 超时**：检查 `ros2 node list` 是否有同名管理器，Gazebo 是否已加载机器人，以及终端是否属于相同的容器/ROS 环境。
-- **改源码后没有变化**：将修改从仓库复制到工作区，在工作区重新编译并 source。可用 `ros2 pkg prefix panda_controller` 确认当前加载的安装位置。
+- **An independent `ros2_control_node` reports `Waiting for data on robot_description`:** confirm that you are running this version's `controller.launch.xml`. Stop the previous project launch and restart. This version removes the extra node; if Gazebo itself is missing the model, inspect `robot_state_publisher`, model spawning, and Gazebo plugin logs.
+- **`cannot activate ... from its current state active`:** the controller is already active. Avoid sending another activation command. This version removes those commands from the task launch.
+- **`list_controllers` times out:** check for duplicate controller managers in `ros2 node list`, confirm that Gazebo has loaded the robot, and ensure the terminals use the same container and ROS environment.
+- **Source changes have no effect:** copy the changes from the repository into the workspace, rebuild, and source the workspace. Use `ros2 pkg prefix panda_controller` to confirm which installation is being loaded.
 
-## Validation status / 验证状态
+## Validation status
 
-本版本已进行 XML 解析和启动结构静态检查。本准备环境没有运行 ROS 2/Gazebo，因此尚未验证编译、实际控制器激活或完整抓取效果。上游演示不代表本版本已通过运行验证。
+The launch files have undergone XML parsing and static launch-structure checks. ROS 2/Gazebo was not run in the preparation environment, so compilation, controller activation, and complete grasp execution remain unverified. The upstream demonstration does not establish runtime validation for this version.
