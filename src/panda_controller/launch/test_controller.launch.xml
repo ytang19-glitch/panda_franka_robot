@@ -1,0 +1,9 @@
+<launch>
+    <!-- 启动 joint_state_publisher_gui，重映射 /joint_states 到 /joint_commands -->
+    <node pkg="joint_state_publisher_gui" exec="joint_state_publisher_gui">
+        <remap from="/joint_states" to="/joint_commands"/>
+    </node>
+
+    <!-- 启动自定义的 C++ 节点 -->
+    <node pkg="panda_controller" exec="test_controller"/>
+</launch>

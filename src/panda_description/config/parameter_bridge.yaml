@@ -1,0 +1,23 @@
+- gz_topic_name: "/clock"
+  ros_topic_name: "/clock"
+  gz_type_name: "gz.msgs.Clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  direction: GZ_TO_ROS
+
+- gz_topic_name: "/camera/camera_info"
+  ros_topic_name: "/camera/camera_info"
+  gz_type_name: "gz.msgs.CameraInfo"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  direction: GZ_TO_ROS
+
+- gz_topic_name: "/world/scene_world/model/panda/joint_state"
+  ros_topic_name: "/joint_states"
+  gz_type_name: "gz.msgs.Model"
+  ros_type_name: "sensor_msgs/msg/JointState"
+  direction: GZ_TO_ROS
+
+- gz_topic_name: "/model/Trash_01_001/pose"
+  ros_topic_name: "/model/Trash_01_001/pose"
+  gz_type_name: "gz.msgs.Pose"
+  ros_type_name: "geometry_msgs/msg/PoseStamped"
+  direction: GZ_TO_ROS

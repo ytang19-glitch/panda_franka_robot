@@ -1,0 +1,12 @@
+<launch>
+    <arg name="target_color" default="R"/>
+
+    <!-- Modified 2026-09-14: remove redundant controller activation commands.
+         Start this task only after bringup spawners activate all controllers. -->
+
+    <!-- grasp commander for color box-->
+    <node pkg="panda_commander" exec="panda_commander" name="panda_commander" output="screen">
+        <param name="target_color" value="$(var target_color)"/>
+        <param name="use_sim_time" value="true" />
+    </node>
+</launch>

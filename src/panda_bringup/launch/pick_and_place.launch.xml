@@ -1,0 +1,15 @@
+<launch>
+    <!-- Gazebo 仿真环境 -->
+    <include file="$(find-pkg-share panda_description)/launch/gazebo.launch.xml" />
+
+    <!-- 机器人控制器 -->
+    <include file="$(find-pkg-share panda_controller)/launch/controller.launch.xml" />
+
+    <!-- MoveIt 运动规划 -->
+    <include file="$(find-pkg-share panda_moveit)/launch/moveit.launch.py">
+        <arg name="is_sim" value="True"/>
+    </include>
+
+    <!-- 颜色检测视觉节点 -->
+    <node pkg="panda_vision" exec="color_detector" name="color_detector" output="screen"/>
+</launch>

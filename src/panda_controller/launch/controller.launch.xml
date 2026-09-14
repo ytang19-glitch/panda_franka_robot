@@ -1,0 +1,13 @@
+<launch>
+    <!-- Modified 2026-09-14: use the controller manager created by gz_ros2_control.
+         Remove the extra standalone ros2_control_node; wait for Gazebo readiness. -->
+    <node pkg="controller_manager" exec="spawner" name="joint_state_broadcaster_spawner"
+          args="joint_state_broadcaster -c /controller_manager --controller-manager-timeout 120"
+          output="screen"/>
+    <node pkg="controller_manager" exec="spawner" name="arm_controller_spawner"
+          args="arm_controller -c /controller_manager --controller-manager-timeout 120"
+          output="screen"/>
+    <node pkg="controller_manager" exec="spawner" name="gripper_controller_spawner"
+          args="gripper_controller -c /controller_manager --controller-manager-timeout 120"
+          output="screen"/>
+</launch>

@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <gazebo>
+        <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+            <parameters>$(find panda_controller)/config/panda_controllers.yaml</parameters>
+        </plugin>
+
+        <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
+            <joint_name>panda_joint1</joint_name>
+            <joint_name>panda_joint2</joint_name>
+            <joint_name>panda_joint3</joint_name>
+            <joint_name>panda_joint4</joint_name>
+            <joint_name>panda_joint5</joint_name>
+            <joint_name>panda_joint6</joint_name>
+            <joint_name>panda_joint7</joint_name>
+            <joint_name>panda_finger_joint1</joint_name>
+        </plugin>
+
+        <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+            <render_engine>ogre2</render_engine>
+        </plugin>
+    </gazebo>
+</robot>

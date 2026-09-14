@@ -1,0 +1,24 @@
+<launch>
+    <set_env name="GZ_SIM_RESOURCE_PATH" value="$(find-pkg-share panda_description)/models:$(find-pkg-share panda_description)/.." />
+    <let name="urdf_path" value="$(find-pkg-share panda_description)/urdf/panda.urdf.xacro" />
+    <let name="world_path" value="$(find-pkg-share panda_description)/world/scene.world" />
+    <let name="parameter_bridge_config_path" value="$(find-pkg-share panda_description)/config/parameter_bridge.yaml" /> 
+
+    <node pkg="robot_state_publisher" exec="robot_state_publisher">
+        <param name="robot_description" value="$(command 'xacro $(var urdf_path)')" />
+        <param name="use_sim_time" value="true"/>
+    </node>
+
+    <include file="$(find-pkg-share ros_gz_sim)/launch/gz_sim.launch.py">
+        <arg name="gz_args" value="$(var world_path) --physics-engine gz-physics-bullet-featherstone-plugin -r" />
+    </include>
+
+    <node pkg="ros_gz_sim" exec="create" args="-topic robot_description" />
+    
+    <node pkg="ros_gz_bridge" exec="parameter_bridge" name="parameter_bridge">
+        <param name="config_file" value="$(var parameter_bridge_config_path)" />
+    </node>
+
+    <node pkg="ros_gz_image" exec="image_bridge" name="image_bridge" args="/camera/image_raw"/>
+
+</launch>
