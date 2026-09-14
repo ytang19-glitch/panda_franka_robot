@@ -1,21 +1,70 @@
-# panda_franka_robot
+# panda_franka_robot — Franka Panda Vision-Guided Sorting
 
-A Franka Panda vision-guided sorting simulation project for learning and further development, using ROS 2 Jazzy, Gazebo Harmonic, MoveIt 2, and OpenCV.
+![ROS 2](https://img.shields.io/badge/ROS_2-Jazzy-blue?logo=ros) ![Gazebo](https://img.shields.io/badge/Gazebo-Harmonic-blue) ![MoveIt](https://img.shields.io/badge/MoveIt-2-green) ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python) ![C++](https://img.shields.io/badge/C%2B%2B-17-blue?logo=cplusplus)
 
-## Reference and acknowledgments
+A ROS 2 simulation project for learning robotic manipulation with a Franka Panda arm: detect colored objects with OpenCV, plan movements with MoveIt 2, and execute pick-and-place tasks in Gazebo.
 
-This project is based on [Franka-Panda-Robot-Project](https://github.com/heimizhou1314/Franka-Panda-Robot-Project) by **heimizhou1314 / zjs**. The original robot models, controller configuration, vision detection, MoveIt configuration, and pick-and-place program come from that project.
+Maintained by **Yujie Tang** as a learning and further-development project.
 
-- Upstream baseline commit: `1eb59f4272fc6f98a4f828ec6a2c1f5b117edec4`.
-- Original documentation: [UPSTREAM_README.md](UPSTREAM_README.md), preserved in its original language with the author's development notes and demonstration links. Use this README for this version's operating instructions.
-- The original [Apache 2.0 LICENSE](LICENSE) and source attribution are preserved. The upstream documentation also retains the attribution for the Franka models.
-- Changes in this version: rewritten setup instructions, removal of the extra standalone controller manager in Gazebo simulation, and removal of redundant controller activation commands when starting the task. Modified source files include change notices.
+## Reference and Acknowledgments
 
-## 0. Start from the original project
+**This project is based on [Franka-Panda-Robot-Project](https://github.com/heimizhou1314/Franka-Panda-Robot-Project) by heimizhou1314 / zjs. That repository is my primary reference and the source of the initial six-package structure and implementation.**
 
-The learning and development workflow is: **clone the original project → copy the six packages → reproduce the baseline → develop your own version**.
+The original robot description, simulation resources, controller configuration, MoveIt configuration, vision detector, and pick-and-place program come from the reference project. This README follows its organization and explains the adapted repository in English.
 
-To study the original version, use a separate workspace:
+- **Upstream baseline:** `1eb59f4272fc6f98a4f828ec6a2c1f5b117edec4`.
+- **Original documentation:** [UPSTREAM_README.md](UPSTREAM_README.md), including the author's development notes and demonstration links.
+- **Attribution:** the original [Apache 2.0 license](LICENSE) and source attribution are preserved. The upstream documentation also credits [franka_ros2](https://github.com/frankaemika/franka_ros2) for the Panda models.
+- **Changes in this version:** setup documentation; removal of the extra standalone controller manager in Gazebo; removal of redundant controller activation commands from the task launch; and declaration of the vision node's `tf_transformations` runtime dependency.
+
+The inherited sorting system is credited to the original author. Further work in this repository should document its changes and validation separately.
+
+## Project Overview
+
+The intended workflow is to detect a red, green, or blue block in the simulated camera image, estimate its position in the robot base frame, and use MoveIt 2 to command the arm and gripper to pick it up and release it over a bin.
+
+The inherited implementation includes:
+
+- A seven-joint Franka Panda arm and two-finger gripper described with URDF/Xacro.
+- A Gazebo scene with colored blocks, a table, a bin, and a camera.
+- OpenCV HSV color segmentation and TF2 coordinate transformation.
+- MoveIt 2 planning configuration and RViz visualization.
+- `ros2_control` arm and gripper controllers and a joint-state broadcaster.
+- A C++ pick-and-place commander and separate system/task launch files.
+
+**Current localization limitation:** the detector uses hard-coded camera intrinsics, a fixed `Z = -0.9`, a scene-specific axis mapping, and small color-dependent offsets. It does not measure object depth. This is a simulation baseline to investigate and improve before adapting the pipeline to another camera or a real robot.
+
+## Project Structure
+
+The repository itself is the ROS 2 workspace. Build and run from `~/panda_franka_robot`.
+
+| Path | Contents |
+| --- | --- |
+| [src/panda_description/](src/panda_description/) | Robot description and simulation resources: `urdf/`, `meshes/`, `models/`, `world/`, `config/`, `rviz/`, and `launch/` |
+| [src/panda_controller/](src/panda_controller/) | Controller YAML configuration, launch files, and controller test code |
+| [src/panda_moveit/](src/panda_moveit/) | MoveIt planning configuration, launch files, and RViz configuration |
+| [src/panda_vision/](src/panda_vision/) | Python package containing `panda_vision/color_detector.py` |
+| [src/panda_commander/](src/panda_commander/) | C++ task implementation in `src/panda_commander.cpp` |
+| [src/panda_bringup/](src/panda_bringup/) | System and commander launch files |
+| [UPSTREAM_README.md](UPSTREAM_README.md) | Preserved original documentation |
+| [LICENSE](LICENSE) | Original Apache 2.0 license |
+
+## Installation
+
+### Environment
+
+- Ubuntu 24.04 with ROS 2 Jazzy installed.
+- Gazebo Harmonic and MoveIt 2.
+- Python 3.12 and a C++ build toolchain.
+- A working graphical session for Gazebo, RViz, and the OpenCV window.
+
+Run all commands in the environment that runs ROS. If using Docker, run them inside the container and substitute its actual workspace path, for example `/panda_ws`.
+
+### 1. Understand the Original Clone-and-Copy Workflow
+
+The starting workflow is **clone the reference → copy its six packages → reproduce the baseline → develop your own version**.
+
+To study the original source in a separate workspace:
 
 ```bash
 cd ~
@@ -24,13 +73,13 @@ mkdir -p ~/panda_upstream_ws/src
 cp -a ~/Franka-Panda-Robot-Project/src/. ~/panda_upstream_ws/src/
 ```
 
-Here, `git clone` downloads the original repository, and `cp -a` copies its packages into a ROS 2 workspace. Follow the [upstream instructions](https://github.com/heimizhou1314/Franka-Panda-Robot-Project#readme) to build and run that version. This repository uses commit `1eb59f4272fc6f98a4f828ec6a2c1f5b117edec4` as its baseline; the clone command above retrieves the latest upstream version by default.
+`git clone` downloads the reference repository; `cp -a` copies the packages into a ROS 2 workspace. The clone command retrieves the latest upstream version by default; the baseline used for this repository is recorded above.
 
-Steps 1–5 below run the `panda_franka_robot` version. It already includes the copied source and the startup fixes listed above. Do not overwrite those fixes with the original source. Use the workspaces separately and source only the workspace you intend to run.
+Use the [original instructions](https://github.com/heimizhou1314/Franka-Panda-Robot-Project#readme) when studying that workspace. Keep it separate from the adapted version below so that copying the original source does not overwrite this repository's fixes.
 
-## 1. Clone this repository
+### 2. Clone This Repository
 
-Run in an Ubuntu terminal:
+The six packages are already included here, so no copying is required to run this version.
 
 ```bash
 cd ~
@@ -38,29 +87,14 @@ git clone https://github.com/ytang19-glitch/panda_franka_robot.git
 cd ~/panda_franka_robot
 ```
 
-If this repository is already cloned at that location, update it instead:
+If it is already cloned:
 
 ```bash
 cd ~/panda_franka_robot
 git pull --ff-only origin main
 ```
 
-The six packages are already included under `~/panda_franka_robot/src/`. This is the source tree you should build and run for your project. Do not put them inside another `panda_bringup` directory. If you prefer a separate ROS workspace, copy them once with the command below; otherwise skip the copy command and build directly in `~/panda_franka_robot`.
-
-| Package | Purpose |
-| --- | --- |
-| `panda_description` | URDF/Xacro, models, camera, and Gazebo scene |
-| `panda_controller` | Controller configuration and spawners |
-| `panda_moveit` | MoveIt 2 planning configuration and RViz |
-| `panda_vision` | OpenCV color detection |
-| `panda_commander` | Pick-and-place task program |
-| `panda_bringup` | System and task launch files |
-
-When building directly in `~/panda_franka_robot`, no copy step is needed. If you use the optional `~/panda_franka_ws`, copy the relevant packages again after editing the repository and rebuild there.
-
-## 3. Install dependencies and build
-
-Prerequisites: Ubuntu 24.04, ROS 2 Jazzy, and a working graphical interface. Run these commands in the same environment that runs ROS. Docker users should run them inside the container and use their actual workspace path, such as `/panda_ws`.
+### 3. Install Dependencies
 
 ```bash
 sudo apt update
@@ -81,19 +115,28 @@ sudo apt install -y \
 source /opt/ros/jazzy/setup.bash
 ```
 
-Run `sudo rosdep init` only when setting up rosdep for the first time. Skip it if rosdep is already initialized.
+Run `sudo rosdep init` only if rosdep has not previously been initialized. Then:
 
 ```bash
 rosdep update
 cd ~/panda_franka_robot
 rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy
+```
+
+### 4. Build the Workspace
+
+```bash
+cd ~/panda_franka_robot
+source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 source install/setup.bash
 ```
 
-## 4. Start the simulation
+## Usage
 
-Terminal A:
+### Start the System
+
+In Terminal A:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -101,14 +144,14 @@ source ~/panda_franka_robot/install/setup.bash
 ros2 launch panda_bringup pick_and_place.launch.xml
 ```
 
-This launch file declares Gazebo, controller spawners, MoveIt/RViz, and the color detection node. Declaration order does not mean that each component waits for the previous component to finish initializing. The spawners wait for the controller manager inside Gazebo.
+This launch starts Gazebo, controller spawners, MoveIt/RViz, and the color detector. Its structure is:
 
 ```xml
 <launch>
     <!-- Gazebo simulation environment -->
     <include file="$(find-pkg-share panda_description)/launch/gazebo.launch.xml" />
 
-    <!-- Robot controllers -->
+    <!-- Robot controller spawners -->
     <include file="$(find-pkg-share panda_controller)/launch/controller.launch.xml" />
 
     <!-- MoveIt motion planning -->
@@ -121,51 +164,113 @@ This launch file declares Gazebo, controller spawners, MoveIt/RViz, and the colo
 </launch>
 ```
 
-Gazebo's `gz_ros2_control` plugin creates the simulation controller manager. The `controller.launch.xml` file starts only the three spawners; it does not start an additional `ros2_control_node`.
+Gazebo's `gz_ros2_control` plugin creates the simulation controller manager. The controller launch starts three spawners, which wait for that manager. XML declaration order does not guarantee that each component finishes initialization before the next starts.
 
-## 5. Check the controllers and run the task
+### Check Readiness and Run a Task
 
-Terminal B:
+In Terminal B:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/panda_franka_robot/install/setup.bash
 ros2 node list
 ros2 control list_controllers -c /controller_manager
+ros2 topic info /color_coordinates
 ```
 
-Expect a single `/controller_manager`, with `joint_state_broadcaster`, `arm_controller`, and `gripper_controller` all `active`. If the controllers are not ready, inspect the Gazebo plugin and launch logs first.
+Expect a single `/controller_manager` and these controllers in the `active` state:
+
+- `joint_state_broadcaster`
+- `arm_controller`
+- `gripper_controller`
+
+Confirm that the vision topic has a publisher and is producing coordinates before starting the task:
+
+```bash
+ros2 topic echo /color_coordinates
+```
+
+Stop the topic echo with `Ctrl+C`, then run:
 
 ```bash
 ros2 launch panda_bringup pick_and_place_commander.launch.xml target_color:=R
 ```
 
-Use `R`, `G`, or `B` for red, green, or blue. The task launch no longer repeats `set_controller_state ... active` commands. Start the task manually after the controllers are ready. Press `Ctrl+C` after a task finishes before starting another run.
+Use `R`, `G`, or `B` to select red, green, or blue. The task launch does not repeat controller activation commands. Press `Ctrl+C` after the task finishes before starting another run.
 
-## 6. Develop your own work
+Use the same `ROS_DOMAIN_ID` in all terminals. If your simulation uses domain 42, run `export ROS_DOMAIN_ID=42` in each terminal before ROS commands.
 
-This repository supports Yujie Tang's learning and further independent development. Existing changes are listed in the acknowledgments above. The following items are future plans, not completed features:
+### System Workflow
 
-- Reproduce color detection and pick-and-place behavior, recording failure cases.
-- Improve object localization, grasp poses, and task state management.
-- Add failure detection and retries; compare grasp success rate, localization error, and task duration.
-- After establishing a stable baseline, explore visual servoing, trajectory optimization, or NMPC.
+1. The Gazebo camera image is bridged to `/camera/image_raw`.
+2. `color_detector.py` segments colors, extracts bounding-box centers, and estimates camera-frame positions using its fixed scene assumptions.
+3. TF2 supplies the transform from `camera_link` to `panda_link0`. The detector publishes strings in the form `R,x,y,z` on `/color_coordinates`.
+4. The commander uses target coordinates, joint states, and the bin pose to plan and execute the task through MoveIt 2.
+5. The intended task sequence is approach, open, descend, grasp, check the grasp, lift, move over the bin, release, and return home.
 
-Edit source files in the repository, then copy them into the workspace to run them. For example, when modifying the vision node:
+**Reference demonstration:** see the original author's [sorting video](https://www.bilibili.com/video/BV1jR496JEYZ/). This demonstrates the upstream project, not independent runtime validation of this version.
+
+## Development Process
+
+The six stages below follow the reference project's organization. They describe the inherited modules and where to study or extend them; they are not a claim that these modules were originally written by this repository's maintainer.
+
+### Step 1: Robot Description — `panda_description`
+
+Study the URDF/Xacro model, meshes, camera configuration, Gazebo plugins, and scene resources. Understand how robot links and joints establish the TF tree.
+
+To inspect the robot description separately:
+
+```bash
+ros2 launch panda_description display.launch.xml
+```
+
+To inspect the Gazebo scene separately:
+
+```bash
+ros2 launch panda_description gazebo.launch.xml
+```
+
+Stop standalone launches before starting the complete system.
+
+### Step 2: Controller Configuration — `panda_controller`
+
+Study the arm and gripper controller configuration and joint-state broadcaster. Understand how planned joint trajectories reach the simulated robot.
+
+This version uses Gazebo's controller manager and starts controller spawners through `controller.launch.xml`. It removes the extra standalone `ros2_control_node` that could create a duplicate manager.
+
+### Step 3: Motion Planning — `panda_moveit`
+
+Study the planning groups, named poses, kinematics, joint limits, planner configuration, and controller connections. Use RViz to inspect planned motion and compare it with execution in Gazebo.
+
+### Step 4: Color Detection and Localization — `panda_vision`
+
+Study the detector pipeline: HSV thresholding, erosion/dilation, contour filtering, bounding-box centers, camera-coordinate estimation, and TF2 transformation.
+
+The current implementation already contains TF2 lookup and point transformation. A missing `tf_transformations` Python dependency prevents the node from starting; it does not mean the source lacks transformation code. Improving depth estimation and calibration is a separate development task.
+
+### Step 5: Pick-and-Place Commands — `panda_commander`
+
+Study the C++ task sequence and MoveIt `MoveGroupInterface` calls. Identify where approach poses, grasp checks, release behavior, and return motion are defined before changing task logic.
+
+### Step 6: System Integration — `panda_bringup`
+
+Study how `pick_and_place.launch.xml` brings up the system and how `pick_and_place_commander.launch.xml` starts a selected-color task. Keep system readiness checks separate from task execution.
+
+### Make and Record Your Own Changes
+
+Edit the source directly in this repository and rebuild here. For example:
 
 ```bash
 cd ~/panda_franka_robot
 git switch -c feature/vision-improvements
-# Edit src/panda_vision/panda_vision/color_detector.py here.
-cp -a src/panda_vision ~/panda_franka_robot/src/
-cd ~/panda_franka_robot
+# Edit src/panda_vision/panda_vision/color_detector.py.
 source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install --packages-select panda_vision
 source install/setup.bash
 ros2 launch panda_bringup pick_and_place.launch.xml
 ```
 
-Stop the previous simulation before launching another instance. After validation, commit your actual changes and push them to your GitHub branch:
+After stopping the previous simulation, run the updated version and record the result. Commit only after making and reviewing actual changes:
 
 ```bash
 cd ~/panda_franka_robot
@@ -175,7 +280,30 @@ git commit -m "Improve color detection"
 git push -u origin feature/vision-improvements
 ```
 
-Record the reason for each change and its validation results. Preserve the original author's attribution and license, and include change notices in modified upstream files.
+Preserve upstream attribution and include change notices in modified upstream files.
+
+## Package Summary
+
+| Package | Responsibility |
+| --- | --- |
+| `panda_description` | Robot model, simulated scene, and camera |
+| `panda_controller` | Joint controller configuration and spawners |
+| `panda_moveit` | Motion planning and execution configuration |
+| `panda_vision` | Color detection, coordinate estimation, and publication |
+| `panda_commander` | Pick-and-place task logic |
+| `panda_bringup` | System and task launch integration |
+
+## Key Technologies
+
+| Technology | Role in This Project |
+| --- | --- |
+| ROS 2 Jazzy | Nodes, topics, parameters, and launch |
+| Gazebo Harmonic | Robot physics, scene, and simulated camera |
+| MoveIt 2 | Motion planning and trajectory execution |
+| OpenCV | Image processing and color segmentation |
+| TF2 | Transform lookup between camera and robot frames |
+| ros2_control | Controller management and simulated joint interfaces |
+| Python / C++ | Vision processing and task implementation |
 
 ## Troubleshooting
 
@@ -205,8 +333,32 @@ Use the same `ROS_DOMAIN_ID` as the simulation in every terminal (for example, `
 - **An independent `ros2_control_node` reports `Waiting for data on robot_description`:** confirm that you are running this version's `controller.launch.xml`. Stop the previous project launch and restart. This version removes the extra node; if Gazebo itself is missing the model, inspect `robot_state_publisher`, model spawning, and Gazebo plugin logs.
 - **`cannot activate ... from its current state active`:** the controller is already active. Avoid sending another activation command. This version removes those commands from the task launch.
 - **`list_controllers` times out:** check for duplicate controller managers in `ros2 node list`, confirm that Gazebo has loaded the robot, and ensure the terminals use the same container and ROS environment.
-- **Source changes have no effect:** copy the changes from the repository into the workspace, rebuild, and source the workspace. Use `ros2 pkg prefix panda_controller` to confirm which installation is being loaded.
+- **Source changes have no effect:** rebuild in `~/panda_franka_robot` and source `~/panda_franka_robot/install/setup.bash` in each terminal. Use `ros2 pkg prefix panda_controller` to confirm which installation is being loaded.
 
-## Validation status
+## Further Development
 
-The launch files have undergone XML parsing and static launch-structure checks. ROS 2/Gazebo was not run in the preparation environment, so compilation, controller activation, and complete grasp execution remain unverified. The upstream demonstration does not establish runtime validation for this version.
+The following items are planned directions, not completed features:
+
+- Reproduce the baseline and record grasp success, localization error, and task duration.
+- Improve camera calibration, depth estimation, and grasp-pose generation.
+- Add failure detection, retries, and clearer task-state reporting.
+- Explore visual servoing or trajectory optimization after establishing a stable baseline.
+- Investigate NMPC as a later control extension with a defined model, objective, and constraints.
+
+## Validation Status
+
+This README update was checked against the current vision source, dependency declaration, and controller/bringup launch files. The previous README records XML parsing and static launch-structure checks. ROS 2/Gazebo was not run during this documentation update; compilation, controller activation, and complete grasp execution remain unverified here.
+
+## Contributing
+
+Suggestions and contributions are welcome for documentation, reproducible bug reports, vision and planning improvements, and simulation fixes. Describe the change, its relationship to the upstream implementation, and how it was validated.
+
+## License
+
+See the preserved [Apache License 2.0](LICENSE). Keep the original author's attribution and applicable notices when modifying or redistributing inherited source.
+
+## Contact
+
+Maintainer: **Yujie Tang** — [ytang19-glitch](https://github.com/ytang19-glitch).
+
+For questions about this adapted repository, open an issue in [panda_franka_robot](https://github.com/ytang19-glitch/panda_franka_robot/issues). For the original implementation and its author, see the [reference repository](https://github.com/heimizhou1314/Franka-Panda-Robot-Project).
