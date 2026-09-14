@@ -347,7 +347,7 @@ The following items are planned directions, not completed features:
 
 
 
-## Development 1:
+### Development 1:
 
 Python is where you write the controller. CasADi helps you express and solve the optimization problem inside it. Let’s start with a small working example before connecting to Gazebo.
 
@@ -358,7 +358,7 @@ $$ \ddot q=u-\sin(q)-0.1\dot q $$
 Here, \(q\) is joint angle, \(\dot q\) is velocity, and \(u\) is the control input. This is a simplified nonlinear teaching model—not your Panda’s dynamics.
 
 
-1. Install CasADi
+#### 1. Install CasADi
 
 Run in an Ubuntu terminal:
 ```bash
@@ -366,6 +366,22 @@ python3 -m venv ~/venvs/nmpc
 source ~/venvs/nmpc/bin/activate
 pip install casadi numpy matplotlib
 ```
+#### 2. Understand the main CasADi commands
+
+Python code
+
+| Python code            | Meaning                                  |
+| ---------------------- | ---------------------------------------- |
+| `opti = ca.Opti()`     | Create an optimization problem           |
+| `opti.variable(...)`   | Create quantities the solver must choose |
+| `opti.parameter(...)`  | Create inputs you supply before solving  |
+| `opti.minimize(cost)`  | Define what “best” means                 |
+| `opti.subject_to(...)` | Define equations and limits              |
+| `opti.solve()`         | Calculate the optimal solution           |
+
+
+
+
 
 
 ## Validation Status
