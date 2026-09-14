@@ -45,7 +45,7 @@ cd ~/panda_franka_robot
 git pull --ff-only origin main
 ```
 
-Place all six packages directly under `~/panda_robot_ws/src/`. Do not put them inside another `panda_bringup` directory. The `cp -a` command overwrites files with matching names, so back up any local changes first. Avoid keeping duplicate copies of the same packages in the workspace because `colcon` may report duplicate package names.
+The six packages are already included under `~/panda_franka_robot/src/`. This is the source tree you should build and run for your project. Do not put them inside another `panda_bringup` directory. If you prefer a separate ROS workspace, copy them once with the command below; otherwise skip the copy command and build directly in `~/panda_franka_robot`.
 
 | Package | Purpose |
 | --- | --- |
@@ -56,7 +56,7 @@ Place all six packages directly under `~/panda_robot_ws/src/`. Do not put them i
 | `panda_commander` | Pick-and-place task program |
 | `panda_bringup` | System and task launch files |
 
-The source repository and runtime workspace are separate copies. After editing the repository, copy the relevant packages again and rebuild in the workspace.
+When building directly in `~/panda_franka_robot`, no copy step is needed. If you use the optional `~/panda_franka_ws`, copy the relevant packages again after editing the repository and rebuild there.
 
 ## 3. Install dependencies and build
 
@@ -85,7 +85,7 @@ Run `sudo rosdep init` only when setting up rosdep for the first time. Skip it i
 
 ```bash
 rosdep update
-cd ~/panda_robot_ws
+cd ~/panda_franka_robot
 rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy
 colcon build --symlink-install
 source install/setup.bash
@@ -129,7 +129,7 @@ Terminal B:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-source ~/panda_robot_ws/install/setup.bash
+source ~/panda_franka_robot/install/setup.bash
 ros2 node list
 ros2 control list_controllers -c /controller_manager
 ```
@@ -157,8 +157,8 @@ Edit source files in the repository, then copy them into the workspace to run th
 cd ~/panda_franka_robot
 git switch -c feature/vision-improvements
 # Edit src/panda_vision/panda_vision/color_detector.py here.
-cp -a src/panda_vision ~/panda_robot_ws/src/
-cd ~/panda_robot_ws
+cp -a src/panda_vision ~/panda_franka_robot/src/
+cd ~/panda_franka_robot
 source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install --packages-select panda_vision
 source install/setup.bash
