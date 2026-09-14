@@ -45,15 +45,6 @@ cd ~/panda_franka_robot
 git pull --ff-only origin main
 ```
 
-## 2. Copy the six packages
-
-```bash
-mkdir -p ~/panda_robot_ws/src
-cd ~/panda_franka_robot
-cp -a src/{panda_description,panda_controller,panda_moveit,panda_vision,panda_commander,panda_bringup} ~/panda_robot_ws/src/
-ls ~/panda_robot_ws/src
-```
-
 Place all six packages directly under `~/panda_robot_ws/src/`. Do not put them inside another `panda_bringup` directory. The `cp -a` command overwrites files with matching names, so back up any local changes first. Avoid keeping duplicate copies of the same packages in the workspace because `colcon` may report duplicate package names.
 
 | Package | Purpose |
@@ -106,7 +97,7 @@ Terminal A:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-source ~/panda_robot_ws/install/setup.bash
+source ~/panda_franka_robot/install/setup.bash
 ros2 launch panda_bringup pick_and_place.launch.xml
 ```
 
