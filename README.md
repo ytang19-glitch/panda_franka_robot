@@ -11,6 +11,23 @@ Franka Panda 视觉分拣仿真学习与二次开发项目，使用 ROS 2 Jazzy�
 - 保留原始 [Apache 2.0 LICENSE](LICENSE) 及源码署名。上游对 Franka 模型来源的说明也保留在原始文档中。
 - 本版本修改：重写安装步骤；移除 Gazebo 仿真中额外的独立 controller manager；移除任务启动时重复激活控制器的命令。修改文件内带有修改说明。
 
+## 0. Start from the original project / 首先克隆原项目
+
+本项目的学习与开发路线是：**克隆原项目 → 复制六个功能包 → 跑通基线 → 在自己的仓库中继续开发**。
+
+如需从原版开始学习，在一个新的独立工作区中执行：
+
+```bash
+cd ~
+git clone https://github.com/heimizhou1314/Franka-Panda-Robot-Project.git
+mkdir -p ~/panda_upstream_ws/src
+cp -a ~/Franka-Panda-Robot-Project/src/. ~/panda_upstream_ws/src/
+```
+
+这里的 `git clone` 下载原作者仓库，`cp -a` 将其中的功能包复制到 ROS 2 工作区。原版编译和运行请参考 [原作者说明](https://github.com/heimizhou1314/Franka-Panda-Robot-Project#readme)。本仓库以提交 `1eb59f4272fc6f98a4f828ec6a2c1f5b117edec4` 为基线；上述克隆默认获取上游最新版本。
+
+下面第 1–5 步用于运行自己的 `panda_franka_robot` 版本。它已经包含复制的源码和本 README 列出的启动修复，无需再用原版源码覆盖它。两个工作区分别使用，启动前只 source 当前要运行的工作区。
+
 ## 1. First: git clone / 首先下载项目
 
 在 Ubuntu 终端执行：
@@ -125,6 +142,41 @@ ros2 launch panda_bringup pick_and_place_commander.launch.xml target_color:=R
 ```
 
 `R`、`G`、`B` 分别对应红、绿、蓝。任务 launch 不再重复调用 `set_controller_state ... active`；请在控制器就绪后手动启动任务。一次任务结束后按 `Ctrl+C`，再启动下一次。
+
+## 6. Develop my own work / 在此基础上二次开发
+
+本仓库用于 Yujie Tang 的学习和后续独立开发。当前已有改动见上方来源说明；下面是后续计划，尚未实现：
+
+- 先复现颜色检测与抓取放置，记录失败场景。
+- 改进目标定位、抓取位姿和任务状态管理。
+- 增加失败检测与重试，并比较抓取成功率、定位误差和任务耗时。
+- 在稳定基线后，探索视觉伺服、轨迹优化或 NMPC 等方法。
+
+在仓库中修改源码，再复制到工作区运行。例如修改视觉节点：
+
+```bash
+cd ~/panda_franka_robot
+git switch -c feature/vision-improvements
+# Edit src/panda_vision/panda_vision/color_detector.py here.
+cp -a src/panda_vision ~/panda_robot_ws/src/
+cd ~/panda_robot_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install --packages-select panda_vision
+source install/setup.bash
+ros2 launch panda_bringup pick_and_place.launch.xml
+```
+
+停止旧的仿真实例后再启动。验证完成后，将实际修改提交到自己的 GitHub 分支：
+
+```bash
+cd ~/panda_franka_robot
+git diff
+git add src/panda_vision/panda_vision/color_detector.py
+git commit -m "Improve color detection"
+git push -u origin feature/vision-improvements
+```
+
+为每次开发记录改动原因和验证结果，保留原作者署名、许可证，并在修改的上游文件中注明改动。
 
 ## Troubleshooting / 常见问题
 
