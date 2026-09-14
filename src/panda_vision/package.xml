@@ -12,6 +12,8 @@
   <depend>std_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>tf2_ros</depend>
+  <!-- Modified 2026-09-14: declare the vision node's tf_transformations runtime import. -->
+  <exec_depend>tf_transformations</exec_depend>
   <depend>geometry_msgs</depend>
   <depend>opencv_python</depend>
 
