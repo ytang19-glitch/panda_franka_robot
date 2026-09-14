@@ -617,6 +617,13 @@ CasADi will need to be installed in the Python environment actually used by the 
 
 This README update was checked against the current vision source, dependency declaration, and controller/bringup launch files. The previous README records XML parsing and static launch-structure checks. ROS 2/Gazebo was not run during this documentation update; compilation, controller activation, and complete grasp execution remain unverified here.
 
+## Any local changes in ubuntu:
+```bash
+git pull --rebase origin main
+git push origin main
+```
+
+
 ## Contributing
 
 Suggestions and contributions are welcome for documentation, reproducible bug reports, vision and planning improvements, and simulation fixes. Describe the change, its relationship to the upstream implementation, and how it was validated.
