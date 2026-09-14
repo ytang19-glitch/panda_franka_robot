@@ -345,6 +345,29 @@ The following items are planned directions, not completed features:
 - Explore visual servoing or trajectory optimization after establishing a stable baseline.
 - Investigate NMPC as a later control extension with a defined model, objective, and constraints.
 
+
+
+## Development 1:
+
+Python is where you write the controller. CasADi helps you express and solve the optimization problem inside it. Let’s start with a small working example before connecting to Gazebo.
+
+We will control a simple simulated joint using:
+
+$$ \ddot q=u-\sin(q)-0.1\dot q $$
+
+Here, \(q\) is joint angle, \(\dot q\) is velocity, and \(u\) is the control input. This is a simplified nonlinear teaching model—not your Panda’s dynamics.
+
+
+1. Install CasADi
+
+Run in an Ubuntu terminal:
+```bash
+python3 -m venv ~/venvs/nmpc
+source ~/venvs/nmpc/bin/activate
+pip install casadi numpy matplotlib
+```
+
+
 ## Validation Status
 
 This README update was checked against the current vision source, dependency declaration, and controller/bringup launch files. The previous README records XML parsing and static launch-structure checks. ROS 2/Gazebo was not run during this documentation update; compilation, controller activation, and complete grasp execution remain unverified here.
