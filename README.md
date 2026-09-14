@@ -82,6 +82,7 @@ sudo apt install -y \
   ros-jazzy-xacro \
   ros-jazzy-joint-state-publisher-gui \
   ros-jazzy-cv-bridge \
+  ros-jazzy-tf-transformations \
   python3-opencv \
   python3-colcon-common-extensions \
   python3-rosdep
@@ -186,6 +187,29 @@ git push -u origin feature/vision-improvements
 Record the reason for each change and its validation results. Preserve the original author's attribution and license, and include change notices in modified upstream files.
 
 ## Troubleshooting
+
+### Vision node fails: missing tf_transformations
+
+If the detector exits with `ModuleNotFoundError: No module named 'tf_transformations'`, install the missing ROS package:
+
+```bash
+sudo apt update
+sudo apt install ros-jazzy-tf-transformations
+source /opt/ros/jazzy/setup.bash
+python3 -c "import tf_transformations; print('tf_transformations import OK')"
+```
+
+The Python module name is `tf_transformations`; its Ubuntu ROS Jazzy package name is `ros-jazzy-tf-transformations`. It is now declared as a runtime dependency in `src/panda_vision/package.xml`, so `rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy` can install it from the updated source.
+
+This missing import prevents the vision node from starting, which leaves `/color_coordinates` without a publisher. Installing the dependency does not require recompiling the already-built Python node. Restart the failed detector or restart the main launch; avoid running both copies.
+
+To diagnose the detector directly, source your actual built workspace first, then run:
+
+```bash
+ros2 run panda_vision color_detector --ros-args -p use_sim_time:=true
+```
+
+Use the same `ROS_DOMAIN_ID` as the simulation in every terminal (for example, `export ROS_DOMAIN_ID=42` if the simulation uses 42). Check `ros2 topic info /color_coordinates` from another terminal. If the detector starts but reports TF lookup failures, inspect `robot_state_publisher` and robot transforms separately; installing this Python module does not create missing TF frames.
 
 - **An independent `ros2_control_node` reports `Waiting for data on robot_description`:** confirm that you are running this version's `controller.launch.xml`. Stop the previous project launch and restart. This version removes the extra node; if Gazebo itself is missing the model, inspect `robot_state_publisher`, model spawning, and Gazebo plugin logs.
 - **`cannot activate ... from its current state active`:** the controller is already active. Avoid sending another activation command. This version removes those commands from the task launch.
