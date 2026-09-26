@@ -10,7 +10,7 @@ class ReferenceTrajectory:
     def set_trajectory(self, trajectory):
         if len(self.joint_names) != 7 or len(set(self.joint_names)) != 7:
             raise ValueError("Expected seven distinct Panda arm joints")
-        if set(trajectory.joint_names) != set(self.joint_names):
+        if (len(trajectory.joint_names) != 7 or\n                set(trajectory.joint_names) != set(self.joint_names)):
             raise ValueError("Trajectory must contain exactly the seven Panda arm joints")
         if len(trajectory.points) < 2:
             raise ValueError("Trajectory requires at least two points")
