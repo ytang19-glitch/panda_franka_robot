@@ -1,0 +1,6 @@
+panda_nmpc:
+  ros__parameters:
+    joint_state_topic: /joint_states
+    reference_topic: /panda_nmpc/reference_trajectory
+    diagnostics_rate_hz: 10.0
+    # Read-only: this package does not command the arm.
