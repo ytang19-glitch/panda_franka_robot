@@ -27,12 +27,13 @@ Run the current tracking diagnostic
 Use the same ROS environment and ROS_DOMAIN_ID in every terminal.
 Terminal A — start the Panda simulation and MoveIt:
 ```bash
-cd ~/panda_franka_robot
-git pull --ff-only origin main
+cd /home/yujietang
+git clone https://github.com/ytang19-glitch/panda_franka_robot.git
+cd panda_franka_robot
 source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 source install/setup.bash
-ros2 launch panda_bringup pick_and_place.launch.xml
+ros2 pkg prefix panda_nmpc
 ```
 That repository launch starts Gazebo, the controllers, MoveIt, and RViz. Source: bringup launch
 
