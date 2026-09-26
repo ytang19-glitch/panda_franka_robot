@@ -21,3 +21,32 @@ then run `ros2 launch panda_nmpc nmpc_sim.launch.py`. Publish a MoveIt
 is a *reference* here; this node does not execute it. For a future controller,
 implement dynamics, constraints, solver failure handling, and a separately
 validated command interface, then test in simulation before hardware.
+
+
+Run the current tracking diagnostic
+Use the same ROS environment and ROS_DOMAIN_ID in every terminal.
+Terminal A — start the Panda simulation and MoveIt:
+```bash
+cd ~/panda_franka_robot
+git pull --ff-only origin main
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+ros2 launch panda_bringup pick_and_place.launch.xml
+```
+That repository launch starts Gazebo, the controllers, MoveIt, and RViz. Source: bringup launch
+
+Terminal B — start the diagnostic node:\
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/panda_franka_robot/install/setup.bash
+ros2 launch panda_nmpc nmpc_sim.launch.py
+```
+Terminal C — verify its inputs:
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/panda_franka_robot/install/setup.bash
+ros2 topic echo /joint_states --once
+ros2 topic info /panda_nmpc/reference_trajectory
+```
+The node will wait until you publish a trajectory_msgs/msg/JointTrajectory on /panda_nmpc/reference_trajectory. Once received, Terminal B prints joint position error=... rad.
