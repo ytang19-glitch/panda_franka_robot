@@ -1,53 +1,45 @@
 # panda_nmpc
 
-ROS 2 Panda reference-tracking scaffold. It reads measured joint positions and
-a `trajectory_msgs/msg/JointTrajectory` reference, validates the reference,
-and logs the position error. **It does not solve NMPC or send robot commands.**
+This package currently **measures joint tracking error only**. It reads `/joint_states` and a `trajectory_msgs/msg/JointTrajectory` reference on `/panda_nmpc/reference_trajectory`. It does not run an NMPC solver or command the robot.
 
-## Layout
+## Run the simulation (three terminals)
 
-- `panda_nmpc/nmpc_node.py`: ROS subscriptions and read-only diagnostics.
-- `panda_nmpc/reference_trajectory.py`: joint mapping and interpolation.
-- `panda_nmpc/safety.py`: measured-state validation and error metric.
-- `panda_nmpc/robot_model.py`: boundary for validated robot dynamics.
-- `panda_nmpc/optimizer.py`: boundary for the future constrained solver.
-- `config/nmpc.yaml`: ROS parameters.
-- `launch/nmpc_sim.launch.py`: diagnostics launch file.
+Build once from `~/panda_franka_robot` with `colcon build --symlink-install`. In **each** new terminal, source ROS and the workspace, and use the same free `ROS_DOMAIN_ID`:
 
-Build with `colcon build --packages-select panda_nmpc`, source the workspace,
-then run `ros2 launch panda_nmpc nmpc_sim.launch.py`. Publish a MoveIt
-`RobotTrajectory.joint_trajectory` to
-`/panda_nmpc/reference_trajectory` to inspect tracking error. A trajectory
-is a *reference* here; this node does not execute it. For a future controller,
-implement dynamics, constraints, solver failure handling, and a separately
-validated command interface, then test in simulation before hardware.
-
-
-Run the current tracking diagnostic
-Use the same ROS environment and ROS_DOMAIN_ID in every terminal.
-Terminal A — start the Panda simulation and MoveIt:
-```bash
-cd /home/yujietang
-git clone https://github.com/ytang19-glitch/panda_franka_robot.git
-cd panda_franka_robot
-source /opt/ros/jazzy/setup.bash
-colcon build --symlink-install
-source install/setup.bash
-ros2 pkg prefix panda_nmpc
-```
-That repository launch starts Gazebo, the controllers, MoveIt, and RViz. Source: bringup launch
-
-Terminal B — start the diagnostic node:\
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/panda_franka_robot/install/setup.bash
-ros2 launch panda_nmpc nmpc_sim.launch.py
+export ROS_DOMAIN_ID=71  # example; use a free domain for all three terminals
 ```
-Terminal C — verify its inputs:
-```bash
-source /opt/ros/jazzy/setup.bash
-source ~/panda_franka_robot/install/setup.bash
-ros2 topic echo /joint_states --once
-ros2 topic info /panda_nmpc/reference_trajectory
-```
-The node will wait until you publish a trajectory_msgs/msg/JointTrajectory on /panda_nmpc/reference_trajectory. Once received, Terminal B prints joint position error=... rad.
+
+1. **Terminal 1 — Gazebo, controllers, MoveIt, RViz, and vision:**
+   ```bash
+   ros2 launch panda_bringup pick_and_place.launch.xml
+   ```
+2. **Terminal 2 — check readiness, then run the read-only diagnostic:**
+   ```bash
+   ros2 control list_controllers -c /controller_manager
+   ros2 topic echo /joint_states --once
+   ros2 run panda_nmpc nmpc_node --ros-args -p use_sim_time:=true
+   ```
+   Wait for `joint_state_broadcaster` and `arm_controller` to be active before starting the pick-and-place task.
+3. **Terminal 3 — run the existing MoveIt pick-and-place task:**
+   ```bash
+   ros2 launch panda_bringup pick_and_place_commander.launch.xml target_color:=R
+   ```
+
+**Expected now:** The robot can follow the MoveIt plan, but the diagnostic may print no error: the commander does not yet publish its planned trajectory to `/panda_nmpc/reference_trajectory`. Check with `ros2 topic info /panda_nmpc/reference_trajectory -v`. The three terminals must share a ROS domain; avoid launching duplicate Panda or real FR3 control stacks into that domain.
+
+## Which files to focus on
+
+| Order | File | Why |
+| --- | --- | --- |
+| 1 | [`../panda_commander/src/panda_commander.cpp`](../panda_commander/src/panda_commander.cpp) | MoveIt plans and executes the task here. Publish each planned arm `JointTrajectory` here to feed the diagnostic. |
+| 2 | [`panda_nmpc/nmpc_node.py`](panda_nmpc/nmpc_node.py) | Subscribes to measured joints and the reference; logs tracking error. Start here inside this package. |
+| 3 | [`panda_nmpc/reference_trajectory.py`](panda_nmpc/reference_trajectory.py) and [`panda_nmpc/safety.py`](panda_nmpc/safety.py) | Map/interpolate the seven joints and validate the measurements. |
+| 4 | [`panda_nmpc/robot_model.py`](panda_nmpc/robot_model.py) and [`panda_nmpc/optimizer.py`](panda_nmpc/optimizer.py) | Future dynamics model and NMPC solver; both are unfinished. |
+| 5 | [`config/nmpc.yaml`](config/nmpc.yaml) and [`launch/nmpc_sim.launch.py`](launch/nmpc_sim.launch.py) | Topic names, diagnostic rate, and launch settings. |
+
+**Next implementation step:** Publish the MoveIt arm trajectory from the commander, then verify the diagnostic prints `joint position error=... rad` while the robot moves. Only after that, implement and test the model and optimizer in simulation. The current diagnostic uses receipt time to sample the reference, so its error is an approximate tracking measurement.
+
+For process cleanup and ROS-domain debugging, see [the troubleshooting guide](../../docs/Panda_ROS_Domain_and_NMPC_Debugging_2026-09-27.md).
