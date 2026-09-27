@@ -1,61 +1,102 @@
-# Panda 仿真与 FR3 实机同时运行：MoveIt、TF、控制器和 NMPC 排查记录
+# Panda ROS 2 Domain and NMPC Debugging (2026-09-27)
 
-日期：2026-09-27（Edmonton）  
-仓库：`panda_franka_robot`  
-环境：Ubuntu 24.04、ROS 2 Jazzy、Gazebo Harmonic、MoveIt 2
+Date: 2026-09-27 (Edmonton)  
+Repository: `panda_franka_robot`  
+Environment: Ubuntu 24.04, ROS 2 Jazzy, Gazebo Harmonic, MoveIt 2
 
-## 一、这次实际观察到了什么
+This guide records the observed Panda simulation problems while FR3 hardware processes were also running. The key debugging rule is to establish **which ROS domain, process, and controller manager** a command is inspecting before interpreting its output.
 
-| 现象 | 证据 | 当前判断 |
-| --- | --- | --- |
-| 重复的 `/rviz2`、`/controller_manager` 等节点 | `ros2 node list` 报同名节点警告；`pgrep -af` 显示四套 `franka_fr3_moveit_config` 实机 MoveIt 启动进程，以及一套 `panda_bringup`。FR3 命令包含 `use_fake_hardware:=false` 和 `robot_ip:=172.16.0.2`。 | 多套 ROS 系统同时运行。需要先用不同 `ROS_DOMAIN_ID` 隔离 Panda 实验；同名节点和服务使未隔离的检查结果难以解释。尚未逐一核实所有现有进程的 domain。 |
-| Panda 旧仿真仍在运行 | `pgrep -af` 仍列出 PID `2522909` 的 `panda_bringup pick_and_place.launch.xml is_sim:=false`，及其 Gazebo 启动命令。 | 之前的启动没有完全退出。PID 只是本次记录，不能在以后的会话中照抄。 |
-| 控制器列表缺少 `arm_controller` | 一次 `ros2 control list_controllers -c /controller_manager` 只显示 `joint_state_broadcaster`、`gripper_controller` 为 active。 | 当时查询到的 controller manager 尚未显示可执行手臂轨迹的 arm controller。重复 manager 存在时，不能断言唯一的 Gazebo manager 状态。 |
-| `color_detector` 曾报告两个 TF 树不相连 | 日志反复提示 `panda_link0` 与 `camera_link` 不在同一棵树。之后 `tf2_echo panda_link0 camera_link` 先等待，随后持续给出平移 `[0.600, 0.000, 1.000]`、单位旋转，时间为 `0.0`。 | 固定相机变换最终可用；启动早期的 Invalid frame ID 不等于永久缺少 TF。固定变换显示时间 0.0 是正常现象。需在隔离后的单一仿真中复查。 |
-| `/joint_states` 的八个位置几乎为零 | 用户贴出的八个位置接近 0，但没有同时贴出 `name` 数组。 | 与仓库的零位初始配置相符。必须按 `name` 映射后才能把数值归给具体关节；不要仅凭数组顺序判断。 |
-| `panda_nmpc` 只显示启动日志 | `Read-only tracking node started; no commands are sent`。 | 节点已启动，但还没有收到 `/panda_nmpc/reference_trajectory`，因此没有误差日志。它当前不求解 NMPC，也不发送机器人命令。 |
-| Fast DDS SHM 报错 | 多次出现 `RTPS_TRANSPORT_SHM Error ... open_and_lock_file failed`；同一会话也收到 `/joint_states` 和 TF。 | 共享内存传输存在问题，但不能仅凭这些日志断言所有 ROS 通信失败，也不能把它当作 TF 或控制器异常的已证实根因。 |
-| MoveIt 曾报告成功，随后 RViz 退出 | 一次日志为 `arm_controller successfully finished`、`Completed trajectory execution with status SUCCEEDED`，之后 `rviz2` 退出码 `-11`。 | 该次机械臂轨迹执行成功与 RViz 崩溃是两个观察结果；目前不能证明 `class_loader` 卸载警告是崩溃根因。 |
+## Quick ROS 2 debugging checklist
 
-## 二、先只结束 Panda 的旧仿真，不批量结束 FR3
-
-四套 FR3 启动命令带有 `use_fake_hardware:=false`。不要运行 `pkill -f move_group`、`pkill -f rviz2`、`killall ros2` 等按通用名字批量关闭的命令，以免影响实机进程。也不要在混合节点图中发送运动命令。
-
-优先到原来启动 Panda 的终端按 `Ctrl+C`。若原终端已找不到，先重新确认 PID 和命令行：
-
-```bash
-pgrep -af 'ros2 launch panda_bringup|panda_franka_robot/install/panda_description'
-ps -o pid,ppid,pgid,args -p 2522909,2522950,2522952
-```
-
-**仅当 PID 仍与本次 Panda 主 launch 匹配**，再向它发 SIGINT：
-
-```bash
-kill -INT 2522909
-pgrep -af 'ros2 launch panda_bringup|panda_franka_robot/install/panda_description'
-```
-
-不要根据单独的 `gz sim server` 名字结束进程；此次机器上不止一个 Gazebo server。`pgrep` 偶尔打印帮助文本只说明某次输入不正确；后续 `pgrep -af ...` 的实际进程列表才是检查依据。
-
-## 三、给 Panda 使用独立的 ROS domain
-
-在**每一个用于 Panda 的终端**设置同一个 domain，并且只 source Jazzy 与 Panda 工作空间：
+Run these commands in a **new terminal** configured for Panda. Use the same `ROS_DOMAIN_ID` and source the same workspace in every Panda terminal, including the launch, CLI, commander, and `panda_nmpc` terminals.
 
 ```bash
 export ROS_DOMAIN_ID=71
 source /opt/ros/jazzy/setup.bash
 source ~/panda_franka_robot/install/setup.bash
 ros2 daemon stop
+echo "$ROS_DOMAIN_ID"
 ros2 node list
 ```
 
-这里的 `71` 是本次 Panda 实验的示例值。启动前，`ros2 node list` 应为空；如果已有节点，先确认它们属于谁，另选一个空闲 domain。不同 domain 的 ROS 2 节点不会互相发现，但**不会停止**其他 domain 中的 FR3 实机程序。不要只在一个终端设置变量：仿真、CLI、commander 与 `panda_nmpc` 必须使用相同值。
+`71` is an example. Before starting Panda, `ros2 node list` should ideally be empty. If it is not, identify the nodes or choose an unused domain. A separate domain prevents ROS 2 discovery across domains; it does **not** stop the FR3 programs running elsewhere.
 
-ROS 2 官方说明：[The ROS_DOMAIN_ID](https://docs.ros.org/en/jazzy/Concepts/Intermediate/About-Domain-ID.html)。
+After starting **one** Panda simulation, run:
 
-## 四、核对实际安装的 launch 文件
+```bash
+ros2 node list | sort | uniq -d
+ros2 control list_controllers -c /controller_manager
+ros2 topic echo /joint_states --once
+ros2 run tf2_ros tf2_echo panda_link0 camera_link
+ros2 param get /move_group use_sim_time
+ros2 param get /rviz2 use_sim_time
+ros2 topic info /panda_nmpc/reference_trajectory -v
+```
 
-GitHub 当前的 `src/panda_bringup/launch/pick_and_place_commander.launch.xml` 只启动 commander，不再重复激活控制器。截图却出现 `ros2 control set_controller_state ... active`，因此先比较 source 与 ROS 实际找到的安装副本：
+| Command | What to check |
+| --- | --- |
+| `echo "$ROS_DOMAIN_ID"` | Every Panda terminal has the same domain value. |
+| `ros2 node list` | The current domain contains the expected Panda nodes; check for unexpected FR3 nodes. |
+| `ros2 node list \| sort \| uniq -d` | Duplicate node names can make CLI results ambiguous. |
+| `ros2 control list_controllers -c /controller_manager` | `arm_controller`, `gripper_controller`, and `joint_state_broadcaster` should be active in the isolated simulation. |
+| `ros2 topic echo /joint_states --once` | Inspect `name` and `position` together; joint positions cannot be assigned by array index alone. |
+| `ros2 run tf2_ros tf2_echo panda_link0 camera_link` | Confirm that the camera transform becomes available after startup. Stop the continuously running command with `Ctrl+C`. |
+| `ros2 param get /move_group use_sim_time` and `ros2 param get /rviz2 use_sim_time` | Both should report `true` for Gazebo simulation. |
+| `ros2 topic info /panda_nmpc/reference_trajectory -v` | Check whether a trajectory publisher actually exists and whether `panda_nmpc` subscribes. |
+
+The commands above are **diagnostics**, not evidence that NMPC is controlling the robot.
+
+## 1. What was observed
+
+| Observation | Evidence | Interpretation and limit |
+| --- | --- | --- |
+| Duplicate `/rviz2` and `/controller_manager` nodes | `ros2 node list` warned about duplicate names. `pgrep -af` showed four FR3 MoveIt launch processes and one `panda_bringup` process. FR3 launch arguments included `use_fake_hardware:=false` and `robot_ip:=172.16.0.2`. | Multiple systems were running. Their individual domains were not all verified, so isolate Panda before trusting ROS graph results. |
+| An old Panda simulation remained running | `pgrep -af` found Panda launch PID `2522909` and its Gazebo processes. | The previous launch had not fully exited. These PIDs were only a snapshot; never reuse them without checking the current process list. |
+| One controller query did not show `arm_controller` | `ros2 control list_controllers -c /controller_manager` showed active `joint_state_broadcaster` and `gripper_controller` only. | The queried manager did not show an active arm controller at that time. Duplicate managers prevent a definite conclusion about the isolated Gazebo manager. |
+| The detector initially reported disconnected TF trees | Logs said `panda_link0` and `camera_link` were not connected. Later `tf2_echo` repeatedly returned translation `[0.600, 0.000, 1.000]`, identity rotation, and time `0.0`. | The static camera transform eventually became available. A brief startup `Invalid frame ID` warning is not proof of a permanent TF failure; time zero is normal for a static transform. Recheck in one isolated simulation. |
+| Eight joint positions were near zero | The pasted `/joint_states` values did not include the corresponding `name` array. | Near-zero positions match the repository's initial configuration, but the joint names must be checked before interpreting individual values. |
+| `panda_nmpc` printed only its startup line | `Read-only tracking node started; no commands are sent`. | It had not received a reference trajectory. The current node does not solve NMPC or send commands. |
+| Fast DDS reported shared-memory errors | `RTPS_TRANSPORT_SHM Error ... open_and_lock_file failed` appeared, while `/joint_states` and TF were also received. | Shared-memory transport had a problem, but the logs alone do not prove all ROS communication failed or explain the TF/controller symptoms. |
+| MoveIt reported execution success and RViz later crashed | The log said `arm_controller successfully finished` and `Completed trajectory execution with status SUCCEEDED`; subsequently `rviz2` exited with `-11`. | Successful trajectory execution and an RViz crash are separate observations. The `class_loader` unload warning has not been proven to cause the crash. |
+
+## 2. Find and stop only the old Panda launch
+
+Prefer `Ctrl+C` in the terminal that launched Panda. Do not use broad commands such as `pkill -f move_group`, `pkill -f rviz2`, or `killall ros2` while FR3 hardware processes are running. Do not send motion commands into a mixed ROS graph.
+
+If the original Panda terminal is gone, inspect current processes:
+
+```bash
+pgrep -af 'ros2 launch panda_bringup|panda_franka_robot/install/panda_description'
+ps -o pid,ppid,pgid,args -p 2522909,2522950,2522952
+```
+
+The `ps` PIDs above illustrate the recorded session. **Replace them with PIDs verified by the current `pgrep` output.** Only after confirming that a PID is still the Panda parent launch, send it `SIGINT` and check again:
+
+```bash
+kill -INT <verified_panda_launch_pid>
+pgrep -af 'ros2 launch panda_bringup|panda_franka_robot/install/panda_description'
+```
+
+Replace the angle-bracket placeholder with the verified numeric PID; do not paste the placeholder literally. Do not terminate a process solely because its name is `gz sim server`: this machine had more than one Gazebo server. If `pgrep` prints its help text, correct the command syntax and rerun `pgrep -af '...'`; help output is not a process list.
+
+## 3. Isolate Panda with `ROS_DOMAIN_ID`
+
+In **every** Panda terminal:
+
+```bash
+export ROS_DOMAIN_ID=71
+source /opt/ros/jazzy/setup.bash
+source ~/panda_franka_robot/install/setup.bash
+ros2 daemon stop
+echo "$ROS_DOMAIN_ID"
+ros2 node list
+```
+
+Use one free domain for this experiment. Setting the variable in a terminal affects processes started from that terminal; it does not retroactively move existing nodes. Restart Panda processes after configuring their terminal environments. The ROS 2 CLI also needs the same domain to discover them. The [ROS 2 domain documentation](https://docs.ros.org/en/jazzy/Concepts/Intermediate/About-Domain-ID.html) explains discovery isolation.
+
+## 4. Verify which installed launch file ROS 2 uses
+
+The repository version of `src/panda_bringup/launch/pick_and_place_commander.launch.xml` launches only the commander and no longer activates controllers a second time. A screenshot nevertheless showed `ros2 control set_controller_state ... active`. Compare source with the installed package actually found by ROS:
 
 ```bash
 cd ~/panda_franka_robot
@@ -64,39 +105,40 @@ diff -u src/panda_bringup/launch/pick_and_place_commander.launch.xml \
   "$(ros2 pkg prefix --share panda_bringup)/launch/pick_and_place_commander.launch.xml"
 ```
 
-若文件不同，在当前工作空间重建并重新 source，然后再检查一次：
+If the files differ, rebuild and source the workspace again:
 
 ```bash
 colcon build --symlink-install --packages-select panda_bringup
 source install/setup.bash
+ros2 pkg prefix --share panda_bringup
 ```
 
-如果 source 本身也包含重复激活命令，先查看 `git status --short` 和本地文件内容；不要盲目覆盖尚未提交的改动。
+If the **source** file itself still contains a second activation command, inspect `git status --short` and local changes before editing it.
 
-## 五、只启动一套 Panda 仿真并验证
+## 5. Start one Panda simulation and inspect the controller
 
-在已设置 `ROS_DOMAIN_ID=71` 的终端启动：
+In the configured Panda terminal:
 
 ```bash
 ros2 launch panda_bringup pick_and_place.launch.xml
 ```
 
-此文件启动 Gazebo、controller spawners、MoveIt/RViz 和颜色检测。它把包含的 MoveIt 的 `is_sim` 固定为 `True`；在外层命令行追加 `is_sim:=false` 不会覆盖这个内层值，也不适合当前 Gazebo 测试。
+This launch starts Gazebo, controller spawners, MoveIt/RViz, and color detection. It sets the included MoveIt launch's `is_sim` to `True`; appending `is_sim:=false` to this outer command does not override that inner value and is inappropriate for this Gazebo test.
 
-在另一个同 domain、同工作空间的终端检查：
+In a **second** Panda terminal, repeat the domain export and both `source` commands, then inspect:
 
 ```bash
-ros2 control list_controllers -c /controller_manager
 ros2 node list | sort | uniq -d
+ros2 control list_controllers -c /controller_manager
 ros2 topic echo /joint_states --once
 ros2 run tf2_ros tf2_echo panda_link0 camera_link
 ros2 param get /move_group use_sim_time
 ros2 param get /rviz2 use_sim_time
 ```
 
-目标：`arm_controller`、`gripper_controller`、`joint_state_broadcaster` 均为 active；没有意外重复的 `/controller_manager`；相机 TF 可以输出；MoveIt 与 RViz 均使用仿真时间。`tf2_echo` 启动时短暂出现 Invalid frame ID 后转为稳定输出，不必把首条提示视为最终结果。
+Expected results: the three controllers are active; there is no unexpected duplicate `/controller_manager`; joint states and the camera transform arrive; MoveIt and RViz use simulation time. A transient `Invalid frame ID` when `tf2_echo` starts can resolve as static transforms arrive.
 
-如果已确认**只有一个** controller manager，但 arm controller 仍未加载，可单独执行：
+**Only after confirming there is one controller manager in this domain**, if `arm_controller` is still absent, try spawning it and inspect the full error if it fails:
 
 ```bash
 ros2 run controller_manager spawner arm_controller \
@@ -104,40 +146,59 @@ ros2 run controller_manager spawner arm_controller \
 ros2 control list_controllers -c /controller_manager
 ```
 
-若 spawner 失败，保留其完整错误和主 launch 日志，检查加载失败原因。ros2_control 官方说明：[Controller Manager / spawner](https://control.ros.org/jazzy/doc/ros2_control/controller_manager/doc/userdoc.html)。
+See the [ros2_control controller manager and spawner documentation](https://control.ros.org/jazzy/doc/ros2_control/controller_manager/doc/userdoc.html).
 
-## 六、RViz 时间与初始姿态
+## 6. Check RViz time and the displayed robot state
 
-当前 GitHub 版本的 `panda_moveit/launch/moveit.launch.py` 把 `use_sim_time` 传给 `move_group`，但 RViz 的 `parameters` 中缺少同一设置。需要在 `rviz_node` 的参数列表中加入：
+In the current repository version, `panda_moveit/launch/moveit.launch.py` passes `use_sim_time` to `move_group`, but the RViz node's `parameters` list is missing it. Add the following entry to `rviz_node` parameters:
 
 ```python
 {"use_sim_time": is_sim},
 ```
 
-修改后运行 `colcon build --symlink-install --packages-select panda_moveit`，重新 source 并重启整个仿真。不要把这项确定的配置不一致直接宣称为 RViz 退出码 `-11` 的已证实原因；如果时间统一后仍崩溃，需要另查 RViz/图形栈。
+Then rebuild, source, and restart the simulation:
 
-SRDF 的 `home` 和 `panda_moveit/config/initial_positions.yaml` 将关节设为零；后者注明用于 fake ros2_control。RViz 可同时显示当前状态和规划目标，因此重叠的两种颜色不必然表示加载了两台机器人。按 `/joint_states.name` 对应的 `position` 判断真实仿真姿态，再检查 RViz 的 Start State/Goal State。
+```bash
+cd ~/panda_franka_robot
+colcon build --symlink-install --packages-select panda_moveit
+source install/setup.bash
+```
 
-## 七、MoveIt 到 `panda_nmpc` 的下一步
+Verify with `ros2 param get /rviz2 use_sim_time`. The time mismatch is a confirmed configuration inconsistency; it has **not** been proven to cause RViz exit code `-11`. If RViz still crashes after the clocks agree, investigate RViz and the graphics stack separately.
 
-当前 `panda_nmpc/panda_nmpc/nmpc_node.py` 订阅 `/joint_states` 和 `/panda_nmpc/reference_trajectory`，通过 `reference_trajectory.py` 插值目标位置，并计算七个关节位置误差的二范数。`optimizer.py`、`robot_model.py` 仍是占位接口。
+The SRDF `home` state and `panda_moveit/config/initial_positions.yaml` set zero joint positions; the latter describes fake ros2_control initialization. RViz may show both current and goal states, so overlapping colors alone do not mean two robots were loaded. Compare the `name` and `position` fields from `ros2 topic echo /joint_states --once`, then inspect RViz Start State and Goal State.
 
-先在 RViz 对 `arm` 规划并执行一段小幅度可达运动，确认模拟控制器工作。**RViz 中按 Plan/Execute 不会自动向 `panda_nmpc` 的 reference topic 发布消息。** 要记录 commander 所执行的 MoveIt 轨迹，需要在 `panda_commander.cpp` 的成功规划分支，把 `plan.trajectory_.joint_trajectory` 发布到 `/panda_nmpc/reference_trajectory`，并只对七轴 `arm_` 发布；然后再执行该计划。相应地在 `panda_commander` 的 `package.xml` 和 `CMakeLists.txt` 增加 `trajectory_msgs` 依赖。
+## 7. Debug the MoveIt-to-`panda_nmpc` reference path
 
-在同 domain 终端启动只读诊断：
+The current `panda_nmpc/panda_nmpc/nmpc_node.py` subscribes to `/joint_states` and `/panda_nmpc/reference_trajectory`. It interpolates desired positions with `reference_trajectory.py` and reports the norm of the seven joint position errors. `optimizer.py` and `robot_model.py` are placeholders.
+
+First plan and execute a small reachable `arm` motion in RViz to verify simulated controller execution. Pressing **Plan/Execute** in RViz does **not** publish a message to the `panda_nmpc` reference topic.
+
+For a commander-driven experiment, publish `plan.trajectory_.joint_trajectory` in `panda_commander.cpp` from the successful `arm_` planning branch to `/panda_nmpc/reference_trajectory`, then execute the plan. Add `trajectory_msgs` to `panda_commander`'s `package.xml` and `CMakeLists.txt`. Ensure the published trajectory has the expected seven arm joint names.
+
+Start the current **read-only** tracking node in the same Panda domain:
 
 ```bash
 ros2 run panda_nmpc nmpc_node --ros-args -p use_sim_time:=true
-ros2 topic info /panda_nmpc/reference_trajectory -v
 ```
 
-若没有参考轨迹，节点只会显示 `Read-only tracking node started; no commands are sent`；这不是优化器运行成功，也不是报错。收到七关节轨迹后才会显示 `Accepted reference trajectory` 和 `joint position error=... rad`。当前代码以 `time.monotonic()` 从消息接收时刻开始计时，尚未精确对齐控制器真正开始执行的仿真时间，实验级误差曲线需要修正这个时间基准。
+In another Panda terminal, inspect the topic and its messages:
 
-后续真正的 NMPC 阶段才是在 `robot_model.py` 中建立并验证预测模型，在 `optimizer.py` 中加入动态、约束和求解器，以当前测量状态和未来 MoveIt 参考点滚动优化。切换到 NMPC 执行时，不要让 MoveIt `execute(plan)` 和 NMPC 同时向同一个 arm controller 下发竞争命令。Panda 仿真中的位置控制验证也不能直接视为 FR3 实机扭矩 NMPC 验证。
+```bash
+ros2 topic info /panda_nmpc/reference_trajectory -v
+ros2 topic echo /panda_nmpc/reference_trajectory --once
+ros2 topic echo /joint_states --once
+```
 
-## 八、本次尚未证实的事项
+`ros2 topic info -v` shows publishers, subscribers, and QoS. The `topic echo --once` call waits for a message; stop it with `Ctrl+C` if no reference is being published. With no reference, the node only reports `Read-only tracking node started; no commands are sent`. After a valid seven-joint reference arrives, look for `Accepted reference trajectory` and `joint position error=... rad`.
 
-- 还没有一份隔离到独立 domain 后的 controller 列表，因此不能宣布 arm controller 已修复。
-- Fast DDS SHM 报错的根因未查明；不要在仍有实机节点运行时盲目清空 `/dev/shm`。
-- RViz 的 `-11` 崩溃根因未查明，虽然同次 MoveIt 轨迹报告 `SUCCEEDED`。
-- 没有收到来自 MoveIt 的 reference topic，也没有运行 NMPC 求解器或由它控制 Panda。
+The current tracking code uses `time.monotonic()` beginning when it receives the trajectory. This is not precisely aligned with when the controller begins executing in simulation, so experiment-quality desired-versus-measured plots require a common execution time base.
+
+A future NMPC controller must validate the prediction model in `robot_model.py`, then implement dynamics, constraints, and a solver in `optimizer.py`. When switching to NMPC execution, avoid simultaneously calling MoveIt `execute(plan)` and commanding the same arm controller from NMPC. Panda position-control simulation results do not establish FR3 hardware torque-control performance.
+
+## 8. Still unverified
+
+- No controller list from a clean, isolated Panda domain has yet confirmed that `arm_controller` is fixed.
+- The root cause of Fast DDS shared-memory errors is unknown. Do not blindly clear `/dev/shm` while hardware nodes are running.
+- The cause of the RViz `-11` crash is unknown, despite MoveIt reporting `SUCCEEDED` for one trajectory.
+- No MoveIt trajectory was observed on the NMPC reference topic, and no NMPC solver controlled Panda in this session.
