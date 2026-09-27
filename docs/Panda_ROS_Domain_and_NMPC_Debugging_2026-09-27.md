@@ -63,21 +63,37 @@ The commands above are **diagnostics**, not evidence that NMPC is controlling th
 
 Prefer `Ctrl+C` in the terminal that launched Panda. Do not use broad commands such as `pkill -f move_group`, `pkill -f rviz2`, or `killall ros2` while FR3 hardware processes are running. Do not send motion commands into a mixed ROS graph.
 
-If the original Panda terminal is gone, inspect current processes:
+If the original Panda terminal is gone, inspect the **process tree and state** before sending a signal. These PIDs are from the recorded session only; run `pgrep` first and replace them with the PIDs currently associated with Panda:
 
 ```bash
 pgrep -af 'ros2 launch panda_bringup|panda_franka_robot/install/panda_description'
-ps -o pid,ppid,pgid,args -p 2522909,2522950,2522952
+ps -o pid,ppid,pgid,stat,args -p 2522909,2522950,2522952
 ```
 
-The `ps` PIDs above illustrate the recorded session. **Replace them with PIDs verified by the current `pgrep` output.** Only after confirming that a PID is still the Panda parent launch, send it `SIGINT` and check again:
+`PID` identifies the process, `PPID` its parent, `PGID` its process group, and `STAT` its state. In this session, `2522909` was the **Panda launch parent**, while `2522950` and `2522952` were Gazebo launcher/child processes. Sending `SIGINT` only to child `2522952` left the parent launch running. After confirming the parent PID still matches `ros2 launch panda_bringup ...`, interrupt the parent and check the process list again:
 
 ```bash
-kill -INT <verified_panda_launch_pid>
+kill -INT 2522909
 pgrep -af 'ros2 launch panda_bringup|panda_franka_robot/install/panda_description'
 ```
 
-Replace the angle-bracket placeholder with the verified numeric PID; do not paste the placeholder literally. Do not terminate a process solely because its name is `gz sim server`: this machine had more than one Gazebo server. If `pgrep` prints its help text, correct the command syntax and rerun `pgrep -af '...'`; help output is not a process list.
+`SIGINT` asks the launch process to shut down normally. It is asynchronous: allow it to finish and check again. If `STAT` contains `T`, the process is stopped, for example after `Ctrl+Z`. Resume that **verified Panda parent**, then ask it to shut down:
+
+```bash
+kill -CONT 2522909
+kill -INT 2522909
+pgrep -af 'ros2 launch panda_bringup|panda_franka_robot/install/panda_description'
+```
+
+If that parent is still present, run `ps` again to verify that the PID has not been reused and still belongs to Panda. Then send `SIGTERM` **only to that Panda launch parent**, and inspect what remains:
+
+```bash
+ps -o pid,ppid,pgid,stat,args -p 2522909
+kill -TERM 2522909
+pgrep -af 'ros2 launch panda_bringup|panda_franka_robot/install/panda_description'
+```
+
+Do not paste these historical PIDs on a later run. If Gazebo children remain after their parent exits, inspect their current `PID`, `PPID`, and command line before taking further action. Do not terminate a process solely because its name is `gz sim server`: this machine had more than one Gazebo server. If `pgrep` prints help text, correct the command syntax and rerun `pgrep -af '...'`; help output is not a process list.
 
 ## 3. Isolate Panda with `ROS_DOMAIN_ID`
 
