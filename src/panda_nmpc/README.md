@@ -113,85 +113,61 @@ The current repository node samples its reference using Python's monotonic wall 
 
 ## Terminal 2 — connect MoveIt plans to the reference topic
 
-The bridge below extracts a Panda arm `JointTrajectory` from a MoveIt `DisplayTrajectory` and publishes it on `/panda_nmpc/reference_trajectory`.
+The installed `reference_bridge` executable extracts a Panda arm
+`JointTrajectory` from a new MoveIt `DisplayTrajectory` and publishes it on
+`/panda_nmpc/reference_trajectory`. Its source is
+[`panda_nmpc/bridge.py`](panda_nmpc/bridge.py).
 
-Paste the entire block into Terminal 2. It runs directly; no new source file or rebuild is needed. The system Python is sufficient for this bridge because it does not use CasADi.
+After updating this package, build it once to register the executable:
 
 ```bash
+cd ~/panda_franka_robot
 source /opt/ros/jazzy/setup.bash
-source ~/panda_franka_robot/install/setup.bash
-
-/usr/bin/python3 - <<'PY'
-import rclpy
-from rclpy.node import Node
-from moveit_msgs.msg import DisplayTrajectory
-from trajectory_msgs.msg import JointTrajectory
-
-
-class ReferenceBridge(Node):
-    def __init__(self):
-        super().__init__("moveit_reference_bridge")
-        self.required_joints = {
-            f"panda_joint{i}" for i in range(1, 8)
-        }
-        self.publisher = self.create_publisher(
-            JointTrajectory,
-            "/panda_nmpc/reference_trajectory",
-            10,
-        )
-        # Reliable, volatile subscription: receive NEW plans after startup.
-        self.subscription = self.create_subscription(
-            DisplayTrajectory,
-            "/display_planned_path",
-            self.forward_reference,
-            10,
-        )
-        self.get_logger().info(
-            "Bridge ready. Create a NEW plan in RViz."
-        )
-
-    def forward_reference(self, msg):
-        for robot_trajectory in msg.trajectory:
-            trajectory = robot_trajectory.joint_trajectory
-            if (
-                len(trajectory.joint_names) != 7
-                or set(trajectory.joint_names) != self.required_joints
-            ):
-                continue
-            if len(trajectory.points) < 2:
-                continue
-            end = trajectory.points[-1].time_from_start
-            if end.sec + end.nanosec * 1e-9 <= 0.0:
-                self.get_logger().warning(
-                    "Skipping trajectory without positive duration"
-                )
-                continue
-            self.publisher.publish(trajectory)
-            self.get_logger().info(
-                f"Forwarded {len(trajectory.points)} trajectory points"
-            )
-            return
-        self.get_logger().warning(
-            "No suitable timed seven-joint Panda arm trajectory found"
-        )
-
-
-rclpy.init()
-node = ReferenceBridge()
-try:
-    rclpy.spin(node)
-except KeyboardInterrupt:
-    pass
-finally:
-    node.destroy_node()
-    if rclpy.ok():
-        rclpy.shutdown()
-PY
+source install/setup.bash
+colcon build --packages-select panda_nmpc --symlink-install
+source install/setup.bash
+ros2 pkg executables panda_nmpc
 ```
 
-Leave it running. This test bridge forwards the first suitable arm trajectory from each display message; it does not concatenate multiple trajectory segments or synchronize execution.
+The executable list should include `nmpc_node` and `reference_bridge`.
 
-If your planned-path topic is namespaced, find its full name with `ros2 topic list -t` and replace `/display_planned_path` in the script.
+Then start the bridge in Terminal 2:
+
+```bash
+cd ~/panda_franka_robot
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+
+ros2 run panda_nmpc reference_bridge
+```
+
+Leave it running. Stop the earlier temporary Python bridge before starting
+this executable, so only one bridge publishes references. CasADi is not required
+for this bridge.
+
+Expected startup:
+
+```text
+Bridge ready: /display_planned_path -> /panda_nmpc/reference_trajectory.
+Create a NEW plan in RViz; no robot commands are sent.
+```
+
+The bridge validates the seven Panda arm joint names, finite positions, and
+strictly increasing nonnegative trajectory times. Empty, multi-segment,
+gripper-only, and malformed trajectories are rejected. This bridge supports one
+arm trajectory per display message; it does not concatenate segments or
+synchronize execution.
+
+If your planned-path topic is namespaced, find its full name with
+`ros2 topic list -t`, then set the topic parameter:
+
+```bash
+ros2 run panda_nmpc reference_bridge --ros-args \
+-p display_topic:=/YOUR_NAMESPACE/display_planned_path
+```
+
+The output topic is also configurable with `-p reference_topic:=...`.
+Match it to the tracker's `reference_topic` parameter.
 
 ## Terminal 4 — check readiness and data
 
@@ -271,7 +247,7 @@ The 2026-09-29 test forwarded 19 points with a 1.71 s duration. Reported solver 
 | --- | --- |
 | `No module named 'casadi'` | Complete the optional CasADi setup and start the local optimizer with the virtual environment's Python. A successful colcon build does not prove runtime imports are available. |
 | Reference publisher count is zero | Start Terminal 2. Planning in RViz alone does not populate the custom reference topic. |
-| Bridge is ready but forwards nothing | Check the topic name/type with `ros2 topic list -t`; click **Plan** again after bridge startup. |
+| Bridge is ready but forwards nothing | Check the topic name/type with `ros2 topic list -t`; set `display_topic` if needed and click **Plan** again after bridge startup. |
 | Bridge forwards but tracker stays quiet | Check Terminal 3 for rejection/solver errors; verify `/joint_states`, ROS domain, and advancing `/clock` for the local optimizer. |
 | Duplicate `/move_group` or `/rviz2` | Stop the extra standalone MoveIt launch with Ctrl+C in its terminal. Keep Terminal 1 running. |
 | Two `/joint_states` publishers | Run `ros2 topic info -v /joint_states` to identify them. Check whether their messages conflict; the count alone does not identify the cause. |
@@ -288,6 +264,7 @@ ros2 topic hz /joint_states
 
 | File | Purpose |
 | --- | --- |
+| [`panda_nmpc/bridge.py`](panda_nmpc/bridge.py) | Installed `reference_bridge` executable: MoveIt display plan to validated tracker reference; no commands. |
 | [`panda_nmpc/nmpc_node.py`](panda_nmpc/nmpc_node.py) | Feedback/reference subscriptions and tracking loop; the local prototype also implements the optimizer here. |
 | [`panda_nmpc/reference_trajectory.py`](panda_nmpc/reference_trajectory.py) | Validates exactly seven Panda joints and interpolates timed positions. |
 | [`panda_nmpc/safety.py`](panda_nmpc/safety.py) | Joint ordering and error calculation. |

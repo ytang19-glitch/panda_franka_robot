@@ -23,6 +23,9 @@ setup(
     license="TODO: License declaration",
     extras_require={"test": ["pytest"]},
     entry_points={
-        "console_scripts": ["nmpc_node = panda_nmpc.nmpc_node:main"],
+        "console_scripts": [
+            "nmpc_node = panda_nmpc.nmpc_node:main",
+            "reference_bridge = panda_nmpc.bridge:main",
+        ],
     },
 )
