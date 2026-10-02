@@ -1,9 +1,11 @@
 1. Create the package
 Run:
+```bash
 cd ~/panda_franka_robot
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-
+```
+```bash
 cd src
 
 ros2 pkg create panda_reference_trajectories \
@@ -17,8 +19,10 @@ trajectory_msgs \
 moveit_msgs \
 moveit_ros_planning_interface \
 tf2_geometry_msgs
-
+```
 Create the remaining directories:
+
+```bash
 cd ~/panda_franka_robot/src/panda_reference_trajectories
 
 mkdir -p \
@@ -27,8 +31,9 @@ launch \
 include/panda_reference_trajectories \
 src/generators \
 test
-
+```
 Create the initial files:
+```bash
 touch README.md
 
 touch config/industrial_profiles.yaml
@@ -49,9 +54,10 @@ touch src/generators/raster_path.cpp
 touch src/generators/approach_retract.cpp
 
 touch test/test_path_generators.cpp
-
+```
 2. New repository structure
 Your project should become:
+```bash
 panda_franka_robot/
 ├── experiment_data/                       # Generated experiment results; do not put in src
 │   ├── baseline/
@@ -133,9 +139,10 @@ panda_franka_robot/
 │
 ├── README.md
 └── .gitignore
-
-3. Purpose of each new file
+```
+4. Purpose of each new file
 File	Responsibility
+```bash
 path_generator.hpp	Common interface used by every path generator
 linear_path.cpp	General line between any two Cartesian poses
 arc_path.cpp	Circular segment in a selectable plane
@@ -147,3 +154,4 @@ moveit_trajectory_builder.cpp	Cartesian waypoints → collision-checked JointTra
 reference_generator_node.cpp	Select profile, generate path, publish or execute it
 industrial_profiles.yaml	Welding, cleaning and assembly profiles
 reference_experiment.launch.py	Starts one trajectory experiment
+```
