@@ -638,16 +638,8 @@ See the preserved [Apache License 2.0](LICENSE). Keep the original author's attr
 
 ## Reference and Acknowledgments
 
-**This project is based on [Franka-Panda-Robot-Project](https://github.com/heimizhou1314/Franka-Panda-Robot-Project) . That repository is my primary reference and the source of the initial six-package structure and implementation.**
+**This project is based on [Franka-Panda-Robot-Project](https://github.com/heimizhou1314/Franka-Panda-Robot-Project) .
 
-The original robot description, simulation resources, controller configuration, MoveIt configuration, vision detector, and pick-and-place program come from the reference project. This README follows its organization and explains the adapted repository in English.
-
-- **Upstream baseline:** `1eb59f4272fc6f98a4f828ec6a2c1f5b117edec4`.
-- **Original documentation:** [UPSTREAM_README.md](UPSTREAM_README.md), including the author's development notes and demonstration links.
-- **Attribution:** the original [Apache 2.0 license](LICENSE) and source attribution are preserved. The upstream documentation also credits [franka_ros2](https://github.com/frankaemika/franka_ros2) for the Panda models.
-- **Changes in this version:** setup documentation; removal of the extra standalone controller manager in Gazebo; removal of redundant controller activation commands from the task launch; and declaration of the vision node's `tf_transformations` runtime dependency.
-
-The inherited sorting system is credited to the original author. Further work in this repository should document its changes and validation separately.
 
 ## Contact
 
