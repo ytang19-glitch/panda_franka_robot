@@ -48,7 +48,7 @@ def generate_launch_description():
         arguments=["--ros-args", "--log-level", "info"],
     )
 
-    # RViz
+    # RViz drag handle configuration
     rviz_config = os.path.join(
         get_package_share_directory("panda_moveit"),
         "rviz",
@@ -62,8 +62,11 @@ def generate_launch_description():
         arguments=["-d", rviz_config],
         parameters=[
             moveit_config.robot_description,
-            moveit_config.robot_description_semantic
+            moveit_config.robot_description_semantic,
+            moveit_config.robot_description_kinematics,  
+               {"use_sim_time": is_sim},
         ],
+
     )
 
     return LaunchDescription([
