@@ -269,11 +269,34 @@ The 2026-09-29 test forwarded 19 points with a 1.71 s duration. Reported solver 
 
 ```
 ## Extension 1 cartesian motion
+### Extension 1 — Cartesian motion planned by MoveIt
+
 ### Move the simulated Panda from a generated Cartesian path
 
-This is the recommended baseline test before adding command output to NMPC. It
-uses the sibling `panda_reference_trajectories` package and the existing MoveIt
-controller path.
+The first extension is to make the generated Cartesian reference executable.
+The `panda_reference_trajectories` package creates Cartesian waypoints such as
+a line, arc, raster, spline, or approach/retract path. MoveIt then converts
+those end-effector poses into a collision-checked joint trajectory and sends it
+to the active `arm_controller`.
+
+This is the recommended next milestone and provides the non-NMPC motion
+baseline:
+
+```text
+Cartesian path generator
+        ↓ nav_msgs/Path
+MoveIt Cartesian planning
+        ↓ trajectory_msgs/JointTrajectory
+arm_controller
+        ↓
+Simulated Panda motion
+```
+
+At this stage, **MoveIt plans and executes the motion**. The NMPC node can
+observe the resulting reference and measured joints, but it remains read-only
+and does not command the robot. After this MoveIt baseline works reliably, the
+same reference trajectories can be used for comparison with a future
+command-capable NMPC controller.
 
 ### Build and verify both executables
 
