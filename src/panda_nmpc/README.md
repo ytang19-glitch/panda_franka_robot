@@ -267,8 +267,9 @@ At the reference duration, the optimizer stops processing that reference and wai
 
 The 2026-09-29 test forwarded 19 points with a 1.71 s duration. Reported solver times were 9.3–38.9 ms. Proposed velocities reached the configured `±0.4 rad/s` bounds. This confirms reference delivery and optimizer operation; it does not demonstrate 1 kHz control or that the robot followed MPC commands.
 
-
-## Move the simulated Panda from a generated Cartesian path
+```
+## Extension 1 cartesian motion
+### Move the simulated Panda from a generated Cartesian path
 
 This is the recommended baseline test before adding command output to NMPC. It
 uses the sibling `panda_reference_trajectories` package and the existing MoveIt
