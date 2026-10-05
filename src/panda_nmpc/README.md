@@ -17,6 +17,25 @@ kinematic MPC**, not yet nonlinear robot-dynamics NMPC.
 The bridge and optimizer are separate ROS nodes. Starting the bridge does not
 replace the optimizer or change its Terminal 3 command.
 
+## Two different workflows in this repository
+
+The Cartesian reference package and the NMPC package currently provide two
+different experiments. Do not treat them as the same control loop.
+
+| Workflow | Data path | Does the robot move? | Purpose |
+| --- | --- | --- | --- |
+| MoveIt Cartesian baseline | `reference_generator` → `/panda_reference/cartesian_path` → `cartesian_path_executor` → MoveIt → `arm_controller` | Yes, when `execute:=true` | Establish a collision-checked baseline and test industrial Cartesian paths. |
+| Read-only MPC evaluation | RViz/MoveIt plan → `reference_bridge` → `/panda_nmpc/reference_trajectory` → `nmpc_node` | No | Measure error, solve the current MPC problem, and log proposed joint velocities. |
+
+The green RViz line is a `nav_msgs/msg/Path` visualization. It is not a robot
+command. The Panda moves only after the Cartesian executor converts the poses
+to a MoveIt joint trajectory and sends that trajectory through the active
+`arm_controller`.
+
+The current `nmpc_node` must not be described as the controller that moved the
+robot. It remains read-only until a separately designed, safety-checked command
+output is implemented.
+
 ## Terminal responsibilities
 
 Start Terminal 1, then Terminal 3, then Terminal 2. Use Terminal 4 to check readiness before making a new RViz plan.
@@ -248,6 +267,166 @@ At the reference duration, the optimizer stops processing that reference and wai
 
 The 2026-09-29 test forwarded 19 points with a 1.71 s duration. Reported solver times were 9.3–38.9 ms. Proposed velocities reached the configured `±0.4 rad/s` bounds. This confirms reference delivery and optimizer operation; it does not demonstrate 1 kHz control or that the robot followed MPC commands.
 
+
+## Move the simulated Panda from a generated Cartesian path
+
+This is the recommended baseline test before adding command output to NMPC. It
+uses the sibling `panda_reference_trajectories` package and the existing MoveIt
+controller path.
+
+### Build and verify both executables
+
+```bash
+cd ~/panda_franka_robot
+source /opt/ros/jazzy/setup.bash
+
+colcon build \
+  --packages-select panda_reference_trajectories \
+  --symlink-install \
+  --cmake-clean-cache
+
+source install/setup.bash
+ros2 pkg executables panda_reference_trajectories
+```
+
+Expected:
+
+```text
+panda_reference_trajectories cartesian_path_executor
+panda_reference_trajectories reference_generator
+```
+
+If only one executable appears, confirm that both targets are included in the
+package's `install(TARGETS ...)` block, rebuild, and source
+`install/setup.bash` in a new terminal.
+
+### Terminal 1 — start one complete simulation stack
+
+```bash
+cd ~/panda_franka_robot
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+
+ros2 launch panda_bringup pick_and_place.launch.xml
+```
+
+Do not start a second standalone MoveIt launch. Verify the command path:
+
+```bash
+ros2 control list_controllers
+ros2 action list | grep arm_controller
+```
+
+The expected controller is `arm_controller` in the `active` state, with the
+`/arm_controller/follow_joint_trajectory` action available.
+
+### Terminal 2 — start the executor in dry-run mode
+
+Start the subscriber before publishing the path:
+
+```bash
+cd ~/panda_franka_robot
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+
+ros2 run panda_reference_trajectories cartesian_path_executor \
+  --ros-args \
+  -p use_sim_time:=true \
+  -p execute:=false \
+  -p wait_timeout:=60.0
+```
+
+The executor should report that it is waiting for
+`/panda_reference/cartesian_path`.
+
+### Terminal 3 — publish one small Cartesian test
+
+First stop old generator instances so that two different paths cannot alternate
+in RViz:
+
+```bash
+pkill -INT -f 'install/panda_reference_trajectories/lib/panda_reference_trajectories/reference_generator'
+pgrep -af reference_generator || echo "No old reference generator is running"
+```
+
+Then start exactly one generator:
+
+```bash
+cd ~/panda_franka_robot
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+
+ros2 run panda_reference_trajectories reference_generator \
+  --ros-args \
+  -r __node:=cartesian_reference_generator \
+  -p use_sim_time:=true \
+  -p frame_id:=panda_link0 \
+  -p start_x:=0.45 \
+  -p start_y:=-0.05 \
+  -p start_z:=0.55 \
+  -p goal_x:=0.45 \
+  -p goal_y:=0.05 \
+  -p goal_z:=0.55 \
+  -p step_size:=0.01
+```
+
+Check the topic if Terminal 2 receives nothing:
+
+```bash
+ros2 topic info /panda_reference/cartesian_path --verbose
+ros2 topic echo /panda_reference/cartesian_path --once
+```
+
+The desired state while the generator is running is one publisher and one or
+more subscribers. `Publisher count: 0` means the generator is not running, has
+exited, or is using a different ROS domain.
+
+A successful dry run should report a valid approach plan and approximately
+`Cartesian path completion: 100.00%`. The robot must remain stationary because
+`execute:=false`.
+
+### Execute the validated path in Gazebo
+
+Stop the dry-run executor after it finishes. Start a new executor with low speed:
+
+```bash
+ros2 run panda_reference_trajectories cartesian_path_executor \
+  --ros-args \
+  -p use_sim_time:=true \
+  -p execute:=true \
+  -p velocity_scaling:=0.1 \
+  -p acceleration_scaling:=0.1 \
+  -p wait_timeout:=60.0
+```
+
+Restart the reference generator in Terminal 3 so the one-shot executor receives
+a new path message. The expected sequence is:
+
+1. MoveIt plans a point-to-point approach to the first waypoint.
+2. The controller moves the Panda to that waypoint.
+3. MoveIt computes the Cartesian segment.
+4. The executor rejects the segment if its completion fraction is below the
+   configured minimum.
+5. A valid trajectory is sent to `arm_controller`.
+
+Test this with `execute:=false` first and in Gazebo only. Do not transfer the
+command to the physical FR3 without adapting the robot description, planning
+group, controller names, limits, safety behavior, and operator procedure.
+
+### Current relationship to NMPC
+
+This motion establishes the **non-NMPC baseline**:
+
+```text
+Cartesian geometry -> MoveIt planning -> arm_controller -> simulated Panda
+```
+
+The next research step is to record the generated joint trajectory and measured
+joint states, use the same reference for the MPC experiment, and compare
+tracking error, cycle time, smoothness, constraints, and solver time. Only after
+that should the read-only optimizer be extended into a command-capable
+simulation controller with one clearly defined owner of robot commands.
+
 ## Troubleshooting
 
 | Symptom | Check / action |
@@ -274,7 +453,7 @@ ros2 topic hz /joint_states
 | [`panda_nmpc/nmpc_node.py`](panda_nmpc/nmpc_node.py) | Feedback/reference subscriptions, joint-space MPC solver, and read-only tracking loop. |
 | [`panda_nmpc/reference_trajectory.py`](panda_nmpc/reference_trajectory.py) | Validates exactly seven Panda joints and interpolates timed positions. |
 | [`panda_nmpc/safety.py`](panda_nmpc/safety.py) | Joint ordering and error calculation. |
-| [`../panda_commander/src/panda_commander.cpp`](../panda_commander/src/panda_commander.cpp) | Existing MoveIt planning/execution; future place to publish a reference aligned with execution. |
+| `../panda_reference_trajectories/src/reference_generator_node.cpp` | Publishes generated Cartesian poses for line, arc, raster, spline, and related tests. |\n| `../panda_reference_trajectories/src/cartesian_path_executor.cpp` | Converts a Cartesian `Path` to a MoveIt trajectory and optionally executes it as the non-NMPC baseline. |\n| [`../panda_commander/src/panda_commander.cpp`](../panda_commander/src/panda_commander.cpp) | Existing MoveIt planning/execution; future place to publish a reference aligned with execution. |
 | [`panda_nmpc/robot_model.py`](panda_nmpc/robot_model.py), [`panda_nmpc/optimizer.py`](panda_nmpc/optimizer.py) | Future dynamics model and NMPC implementation. |
 | [`config/nmpc.yaml`](config/nmpc.yaml), [`launch/nmpc_sim.launch.py`](launch/nmpc_sim.launch.py) | Package settings and alternate launch; do not start it alongside another tracker instance. |
 | [`../panda_controller/config/panda_controllers.yaml`](../panda_controller/config/panda_controllers.yaml) | Existing arm controller configuration: position command interface. |
