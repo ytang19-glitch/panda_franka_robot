@@ -384,9 +384,14 @@ panda_reference_trajectories cartesian_path_executor
 panda_reference_trajectories reference_generator
 ```
 
-## Run a safe linear-path test in Gazebo
+## Run a linear-path test in Gazebo
 
-Use three terminals. Test with `execute:=false` before allowing motion.
+Use three terminals: **Terminal 1 runs the simulation, Terminal 2 publishes the
+reference, and Terminal 3 checks and executes it.** First test with
+`execute:=false`. Example coordinates must be checked in your current scene;
+they are not a guarantee of reachability or clearance.
+
+Build the package using the commands above before opening the terminals.
 
 ### Terminal 1 — simulation, MoveIt, and controllers
 
@@ -398,59 +403,28 @@ source install/setup.bash
 ros2 launch panda_bringup pick_and_place.launch.xml
 ```
 
-This top-level launch already starts MoveIt. Do not start a second standalone
-MoveIt launch.
+Keep this terminal running and ensure Gazebo is unpaused. If this launch is
+already running, reuse it. It includes MoveIt and the controllers; launching a
+second MoveIt instance can create duplicate nodes.
 
-Verify the controller:
+### Terminal 2 — publish one small linear reference
 
-```bash
-ros2 control list_controllers
-ros2 action list | grep arm_controller
-```
-
-Required results include an active `arm_controller` and:
-
-```text
-/arm_controller/follow_joint_trajectory
-```
-
-### Terminal 2 — dry-run executor
+Stop the previous generator with **Ctrl+C** in its terminal. If you cannot find
+that terminal, inspect and stop the old installed generator:
 
 ```bash
-cd ~/panda_franka_robot
-source /opt/ros/jazzy/setup.bash
-source install/setup.bash
-
-ros2 run panda_reference_trajectories cartesian_path_executor \
-  --ros-args \
-  -p use_sim_time:=true \
-  -p execute:=false \
-  -p wait_timeout:=60.0
-```
-
-The executor waits for one path, plans an approach to its first point, previews
-the Cartesian segment from the planned approach endpoint, checks the completion
-fraction, and exits. No motion is executed in dry-run mode.
-
-### Terminal 3 — publish a small path
-
-Stop old generators first:
-
-```bash
+pgrep -af reference_generator
 pkill -INT -f 'install/panda_reference_trajectories/lib/panda_reference_trajectories/reference_generator'
-pgrep -af reference_generator || echo "No old reference generator is running"
 ```
 
-Start exactly one generator:
+Then start exactly one publisher:
 
 ```bash
 cd ~/panda_franka_robot
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 
-ros2 run panda_reference_trajectories reference_generator \
-  --ros-args \
-  -r __node:=cartesian_reference_generator \
+ros2 run panda_reference_trajectories reference_generator --ros-args \
   -p use_sim_time:=true \
   -p frame_id:=panda_link0 \
   -p start_x:=0.45 \
@@ -459,54 +433,144 @@ ros2 run panda_reference_trajectories reference_generator \
   -p goal_x:=0.45 \
   -p goal_y:=0.05 \
   -p goal_z:=0.55 \
-  -p step_size:=0.01
+  -p step_size:=0.005
 ```
 
-Expected generator output:
+This describes a 10 cm line along the Y axis of `panda_link0`, sampled at
+approximately 5 mm intervals. `step_size` is spatial spacing, not tool speed.
+Keep the generator running: it republishes the reference once per second.
+Publishing a path alone does not move the robot.
 
-```text
-Linear Cartesian reference generated with ... waypoints.
-Publishing: /panda_reference/cartesian_path
+The current GitHub generator always uses `generateLinearPath()`, so this
+command does not require a `path_type` parameter.
+
+### Terminal 3 — check the path and controllers
+
+```bash
+cd ~/panda_franka_robot
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+
+ros2 control list_controllers
+ros2 action list
+ros2 topic info /panda_reference/cartesian_path --verbose
+ros2 topic echo /panda_reference/cartesian_path --once
 ```
 
-Expected executor output includes:
+Confirm:
+
+- `arm_controller` is active.
+- `/arm_controller/follow_joint_trajectory` is available.
+- The path has exactly one publisher.
+- The message has `frame_id: panda_link0` and a nonempty `poses` array.
+
+If the topic is unknown, check Terminal 2 for a stopped or failed generator.
+If `poses: []`, fix generation before running the executor. Multiple generators
+can send alternating references and make the RViz line appear to swing.
+
+### Terminal 3 — plan without moving
+
+```bash
+ros2 run panda_reference_trajectories cartesian_path_executor --ros-args \
+  -p use_sim_time:=true \
+  -p execute:=false \
+  -p move_to_start:=true \
+  -p minimum_fraction:=1.0 \
+  -p wait_timeout:=60.0
+```
+
+The executor plans an approach to the first waypoint, previews the Cartesian
+segment from the planned approach endpoint, and exits. Expected successful
+output includes:
 
 ```text
-Received ... waypoints in frame 'panda_link0'
-Planning an approach to the first waypoint
 Cartesian path completion: 100.00%
 Dry run successful. No motion was executed.
 ```
 
-Do not execute a path whose completion fraction is below the configured
-`minimum_fraction`.
+If planning fails, inspect its error before proceeding. Check the first pose,
+tool orientation, collision objects, and robot workspace. The command above
+requires full Cartesian completion.
 
-## Execute the validated path in Gazebo
+### Terminal 3 — execute after the successful dry run
 
-After a successful dry run, start a new executor:
+Leave Terminal 2 publishing the same reference, then run:
 
 ```bash
-ros2 run panda_reference_trajectories cartesian_path_executor \
-  --ros-args \
+ros2 run panda_reference_trajectories cartesian_path_executor --ros-args \
   -p use_sim_time:=true \
   -p execute:=true \
+  -p move_to_start:=true \
+  -p minimum_fraction:=1.0 \
   -p velocity_scaling:=0.1 \
   -p acceleration_scaling:=0.1 \
   -p wait_timeout:=60.0
 ```
 
-The generator republishes once per second, so the new executor should receive
-the current path. The expected sequence is:
+The execution sequence is:
 
-1. MoveIt plans a point-to-point approach to the first waypoint.
-2. The Panda moves to that waypoint.
-3. MoveIt calculates the Cartesian segment.
-4. The executor rejects an incomplete or empty trajectory.
-5. A valid trajectory is executed through `arm_controller`.
+1. Plan and execute the approach to the first waypoint.
+2. Calculate the Cartesian trajectory from the resulting robot state.
+3. Reject an empty trajectory or one below the required completion fraction.
+4. Execute the accepted Cartesian trajectory through `arm_controller`.
 
-Use this command in simulation only. Physical FR3 execution requires a separate
-hardware-specific review of descriptions, frames, groups, controller names,
-limits, collision objects, recovery behavior, and operator safety.
+The execution command replans; it does not reuse the previous dry-run plan.
+In the current implementation, the approach moves **before** the Cartesian
+segment is calculated and accepted. Scaling parameters are passed to MoveIt;
+they do not specify a constant welding or dispensing speed.
+
+The executor handles one path and exits. Rerun it for another trial. These
+commands are for the Gazebo Panda setup.
+
+### Switch to an arc reference after adding runtime selection
+
+**Prerequisite:** add the `path_type`, `radius`, `start_angle`, and
+`end_angle` parameters and the `generateArcPath()` selection branch to
+`src/reference_generator_node.cpp`, then rebuild and source the workspace.
+The GitHub generator at the time of this documentation update still supports
+only linear publication. Passing `path_type:=arc` alone does not enable arcs
+in that version.
+
+After implementing the branch discussed above, stop Terminal 2 with Ctrl+C
+and run this command there:
+
+```bash
+ros2 run panda_reference_trajectories reference_generator --ros-args \
+  -p use_sim_time:=true \
+  -p path_type:=arc \
+  -p frame_id:=panda_link0 \
+  -p start_x:=0.45 \
+  -p start_y:=0.0 \
+  -p start_z:=0.55 \
+  -p radius:=0.05 \
+  -p start_angle:=0.0 \
+  -p end_angle:=1.5707963267948966 \
+  -p step_size:=0.005
+```
+
+With that selection branch, `start_x/y/z` define the **arc centre**, not its
+first waypoint. This is a 5 cm radius quarter-circle in the XY plane, from
+approximately `(0.50, 0.00, 0.55)` to `(0.45, 0.05, 0.55)`.
+Angles are in radians.
+
+Repeat the topic check, dry run, and execution in Terminal 3 for the new path.
+To return to a line in the modified node, use `path_type:=linear` with the
+linear start/goal parameters.
+
+### Extend the same workflow to industrial motion experiments
+
+| Motion experiment | Generator | Required node extension |
+| --- | --- | --- |
+| Straight welding or dispensing | `generateLinearPath()` | Already connected |
+| Circular welding or sealing | `generateArcPath()` | Arc parameters and selection branch |
+| Painting or inspection scan | `generateRasterPath()` | Width, height, row spacing, and raster branch |
+| Curved dispensing or contour following | `generateSplinePath()` | Control-point input, sampling, and spline branch |
+| Approach → working path → retract | Approach/retract plus a working generator | Compose the segments in the trajectory builder |
+
+The generator functions create geometric paths. Real welding, dispensing, and
+painting also require tools and process timing; polishing and insertion require
+contact handling. The existing executor can receive different geometric paths
+on the same topic once those generators are connected.
 
 ## Parameters
 
