@@ -210,3 +210,11 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return return_code;
 }
+
+  executor.cancel();
+  if (spinner.joinable()) {
+    spinner.join();
+  }
+  rclcpp::shutdown();
+  return return_code;
+}
