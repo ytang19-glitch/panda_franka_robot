@@ -22,6 +22,8 @@ public:
   : Node("reference_generator")
   {
     // Parameters can later be loaded from an application YAML file.
+    // And they can be overridden from the command line. 
+    // declare_parameter can be changed based on real interface of franka_ros2.
     const std::string frame_id =
       declare_parameter<std::string>(
       "frame_id", "panda_link0");
@@ -135,7 +137,7 @@ public:
       get_logger(),
       "Publishing: /panda_reference/cartesian_path");
   }
-
+ // nav_masgs can be changed if we want to make franka arm move along the path.
 private:
   nav_msgs::msg::Path cartesian_path_;
 
