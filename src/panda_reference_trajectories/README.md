@@ -572,6 +572,98 @@ painting also require tools and process timing; polishing and insertion require
 contact handling. The existing executor can receive different geometric paths
 on the same topic once those generators are connected.
 
+## Record a baseline trial with rosbag2
+
+Use the three terminals above plus **Terminal 4 for recording**. The order is:
+
+| Step | Terminal | Action |
+| --- | --- | --- |
+| 1 | 1 | Start the simulation, MoveIt, and controllers; leave Gazebo unpaused |
+| 2 | 2 | Start exactly one reference generator and keep it running |
+| 3 | 3 | Check the interfaces and complete the dry run with `execute:=false` |
+| 4 | 4 | Start recording and wait for subscriptions to the four topics |
+| 5 | 3 | Run the execution command above with `execute:=true` |
+| 6 | 4 | After execution finishes, record another 2–3 seconds, then press Ctrl+C |
+| 7 | 4 | Inspect the saved bag with `ros2 bag info` |
+
+**Robot ready → recording starts → motion executes → recording stops.**
+If the stack is already running, reuse it; do not launch a second MoveIt instance.
+
+### Terminal 4 — record before executing
+
+```bash
+cd ~/panda_franka_robot
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+
+mkdir -p recordings
+
+ros2 bag record \
+  -o recordings/linear_baseline_03 \
+  --topics \
+  /clock \
+  /joint_states \
+  /arm_controller/controller_state \
+  /panda_reference/cartesian_path
+```
+
+Keep this command running while Terminal 3 executes the motion. Use a new
+output directory for each trial, such as `linear_baseline_04`; rosbag2 does
+not overwrite an existing bag directory. Press Ctrl+C **in Terminal 4** to
+finish recording cleanly.
+
+| Topic | Recorded information | Analysis use |
+| --- | --- | --- |
+| `/clock` | Simulation time | Interpret simulation timestamps |
+| `/joint_states` | Measured joint states | Joint motion and forward-kinematics analysis |
+| `/arm_controller/controller_state` | Controller reference, feedback, and error | Joint tracking error |
+| `/panda_reference/cartesian_path` | Geometric tool path | Identify the intended Cartesian geometry |
+
+Recording `/clock` does not automatically change the recorder's timestamp
+source. For tracking analysis, use controller header timestamps consistently;
+do not mix them directly with wall-clock bag timestamps.
+
+### Inspect the completed recording
+
+```bash
+ros2 bag info recordings/linear_baseline_03
+```
+
+Check that all four topics have nonzero message counts and that recording
+covers the complete motion. The `.mcap` file stores messages; normal clean
+shutdown also writes `metadata.yaml`. A successful info command confirms the
+bag can be inspected, but message counts alone do not prove the robot moved:
+joint and controller states also publish while stationary.
+
+An observed `linear_baseline_02` recording contained 45.66 seconds and 33,249
+messages across all four topics. This confirms recording, not tracking quality
+or successful trajectory execution.
+
+### Evaluate tracking over the intended motion interval
+
+For each joint, align arrays by joint name and calculate position error in
+radians from the reference and feedback in the same controller-state message:
+
+```text
+e_j[k] = q_reference,j[k] - q_feedback,j[k]
+RMSE_j = sqrt(mean(e_j[k]^2))
+```
+
+Report per-joint RMSE and maximum absolute error over a stated interval.
+Exclude idle periods when evaluating motion tracking. With
+`move_to_start:=true`, the bag includes both the approach and the Cartesian
+segment; evaluate them separately if the goal is linear-path tracking.
+
+`nav_msgs/Path` describes geometry, not a time-parameterized joint reference.
+Use controller reference/feedback for joint RMSE. Cartesian tracking analysis
+additionally requires forward kinematics, a consistent tool/frame definition,
+and a clearly defined geometric or time-aligned reference.
+
+For repeated comparisons, keep the initial robot state, path, scaling, and
+evaluation interval consistent. A read-only NMPC node may remain running,
+but label a trial “with NMPC” only when NMPC actually commands the robot.
+The current read-only node does not create an NMPC-controlled experiment.
+
 ## Parameters
 
 ### Reference generator
