@@ -7,6 +7,8 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <stdexcept>
+
 
 using namespace std::chrono_literals;
 
@@ -44,6 +46,19 @@ public:
 
     const double step_size =
       declare_parameter<double>("step_size", 0.005);
+    
+    const std::string path_type =
+      declare_parameter<std::string>("path_type", "linear");
+
+    const double radius =
+      declare_parameter<double>("radius", 0.05);
+
+    const double start_angle =
+      declare_parameter<double>("start_angle", 0.0);
+ 
+    const double end_angle =
+      declare_parameter<double>("end_angle", 1.5707963267948966);
+
 
     Pose start;
     start.position.x = start_x;
@@ -61,8 +76,19 @@ public:
     goal.position.y = goal_y;
     goal.position.z = goal_z;
 
-    const PoseSequence waypoints =
-      generateLinearPath(start, goal, step_size);
+    PoseSequence waypoints;
+
+    if (path_type == "linear") {
+      waypoints = generateLinearPath(start, goal, step_size);
+    } else if (path_type == "arc") {
+      waypoints = generateArcPath(start, radius, start_angle, end_angle, step_size);
+    } else {
+      throw std::runtime_error("Invalid path_type parameter: " + path_type);
+    }
+
+    if (waypoints.empty()) {
+      throw std::runtime_error("The generator returned no waypoints.");
+    }
 
     cartesian_path_.header.frame_id = frame_id;
 
@@ -102,6 +128,7 @@ public:
     RCLCPP_INFO(
       get_logger(),
       "Linear Cartesian reference generated with %zu waypoints.",
+      path_type.c_str(),
       cartesian_path_.poses.size());
 
     RCLCPP_INFO(
