@@ -21,6 +21,82 @@ The inherited implementation includes:
 
 **Current localization limitation:** the detector uses hard-coded camera intrinsics, a fixed `Z = -0.9`, a scene-specific axis mapping, and small color-dependent offsets. It does not measure object depth. This is a simulation baseline to investigate and improve before adapting the pipeline to another camera or a real robot.
 
+## Simulation-to-Hardware Architecture for NMPC Testing
+
+The development setup uses two ROS 2 domains connected by a **ROS 2 Domain Bridge**. Domain 10 contains the Panda simulation and reference-generation workspace; Domain 20 contains the real FR3 MoveIt 2 test environment. This allows reference paths developed in simulation to be evaluated on the hardware-side planning platform as a foundation for nonlinear model predictive control (NMPC) experiments.
+
+| Component | ROS domain | Responsibility |
+| --- | --- | --- |
+| `panda_franka_robot` | `ROS_DOMAIN_ID=10` | Panda simulation, C++ reference-path generation, and initial algorithm testing |
+| ROS 2 Domain Bridge | Connects 10 → 20 | Forward explicitly configured reference topics between the two domains |
+| Real FR3 / MoveIt 2 test environment | `ROS_DOMAIN_ID=20` | Use the FR3 model and current state to plan approach motion, compute Cartesian trajectories, preview motion in RViz, and validate trajectories before hardware execution |
+| NMPC development | Run alongside the robot being controlled | Use a time-parameterized reference and measured robot state to optimize constrained tracking commands; validate in simulation before hardware deployment |
+
+### Reference and Feedback Workflow
+
+```mermaid
+flowchart TD
+    subgraph D10["Domain 10 — panda_franka_robot"]
+        S["Panda simulation"]
+        G["C++ reference-path generator"]
+        S -->|"Initial testing"| G
+    end
+    G -->|"Cartesian reference path"| B["ROS 2 Domain Bridge"]
+    subgraph D20["Domain 20 — FR3 test platform"]
+        M["MoveIt 2 approach and Cartesian planning"]
+        V["RViz preview and trajectory validation"]
+        N["Planned NMPC tracking controller"]
+        R["FR3 hardware"]
+        M --> V
+        V -->|"Validated timed reference"| N
+        N -->|"Control commands"| R
+        R -->|"Measured joint state"| N
+    end
+    B --> M
+```
+
+The reference-path interface used in this development workflow is `/panda_reference/cartesian_path` with message type `nav_msgs/msg/Path`. Configure the bridge to forward this topic from Domain 10 to Domain 20. The receiving MoveIt component converts Cartesian waypoints into a robot-specific joint trajectory with timing. A geometric path alone does not define the joint velocities, accelerations, or timing needed for NMPC tracking.
+
+**The bridge transfers messages; it does not convert Panda frames, joint names, or dynamics into FR3 equivalents.** Before planning on the FR3, express the path in the correct FR3 reference frame, check TCP orientation, and use the FR3 robot model and joint limits. Changing a frame label alone is not a coordinate transformation.
+
+### Terminal Domain Settings
+
+Set the domain before launching ROS nodes in each terminal.
+
+For Panda simulation and reference generation:
+
+```bash
+export ROS_DOMAIN_ID=10
+source /opt/ros/jazzy/setup.bash
+source ~/panda_franka_robot/install/setup.bash
+```
+
+For the FR3 MoveIt test environment:
+
+```bash
+export ROS_DOMAIN_ID=20
+source /opt/ros/jazzy/setup.bash
+# Source the separately built FR3 workspace here.
+```
+
+Launch the Domain Bridge in a separate terminal using a configuration that explicitly specifies source domain 10, destination domain 20, and the reference topic. Its domain mapping comes from that configuration; setting one terminal's `ROS_DOMAIN_ID` does not by itself connect the domains. Keep the simulation and FR3 workspace overlays in separate terminals.
+
+Within each domain, all participating terminals must use that domain's ID. The single-domain examples elsewhere in this README apply within one environment; this architecture uses 10 for simulation and 20 for the FR3 environment.
+
+### Purpose of the NMPC Test Platform
+
+The hardware-side MoveIt environment provides a planning and validation baseline for future NMPC experiments. The intended progression is:
+
+1. Generate and inspect reference paths in Domain 10.
+2. Bridge the selected reference path into Domain 20.
+3. Plan the approach and Cartesian motion with the FR3 model; inspect the preview and validate joint limits, continuity, and timestamps.
+4. Establish baseline tracking and then evaluate closed-loop NMPC using measured FR3 state.
+5. Compare tracking error, command smoothness, solve time, and disturbance or payload response under matched reference trajectories.
+
+NMPC repeatedly solves a finite-horizon optimization problem initialized from measured state and applies the first control action. It can penalize tracking error and abrupt input changes while enforcing modeled constraints. Smooth reference generation and time parameterization remain separate responsibilities.
+
+**Status:** this section records the intended two-domain development architecture. It does not add a bridge configuration or deploy a hardware NMPC controller. RViz trajectory playback demonstrates a motion preview; hardware execution and closed-loop NMPC require separate validation. Keep hardware feedback and the control loop local to Domain 20; do not bridge simulation `/clock`, `/joint_states`, `/tf`, or controller commands into the hardware environment by default.
+
 ## Project Structure
 
 The repository itself is the ROS 2 workspace. Build and run from `~/panda_franka_robot`.
