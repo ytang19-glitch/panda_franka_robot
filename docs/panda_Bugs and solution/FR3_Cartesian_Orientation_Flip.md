@@ -8,6 +8,87 @@ The generator defaults to quaternion (xyzw) = (0, 0, 0, 1) when orientation para
 
 The original comparison also changed X and path length. It supports orientation as the main suspected cause, but a controlled comparison should keep all XYZ parameters unchanged and change only orientation. Reaching a target does not establish trajectory safety.
 
+## Debugging process: separate Domain 10 and Domain 20 terminals
+
+The issue identified in this session was a mismatch between the generator's default target orientation (0, 0, 0, 1) and the current TCP orientation obtained from TF. Explicitly supplying a target close to the measured orientation improved the user-observed motion. Topic-name remapping was a separate communication/display issue.
+
+Keep the Generator and Domain Bridge running in their own terminals. Use two additional diagnostic windows, with the appropriate ROS/workspace environment sourced. Set ROS_DOMAIN_ID before starting each command; changing it does not move an already running node to another domain.
+
+### Window 1 — Domain 10: inspect the generator output
+
+```bash
+export ROS_DOMAIN_ID=10
+echo "$ROS_DOMAIN_ID"
+ros2 topic echo /panda_reference/cartesian_path --once
+ros2 topic info /panda_reference/cartesian_path --verbose
+```
+
+Inspect header.frame_id, each pose.position, and each pose.orientation. Without orientation overrides, the posted generator requests (0, 0, 0, 1). With overrides, verify the actual normalized values in the published message.
+
+Observed endpoint information:
+
+- Publisher: reference_generator.
+- Subscriber: panda_to_fr3_bridge_10.
+- Both endpoints used Reliable and Transient Local.
+
+If echo does not receive a sample, explicitly request the type and retained-message QoS:
+
+```bash
+ros2 topic echo /panda_reference/cartesian_path nav_msgs/msg/Path \
+  --qos-reliability reliable \
+  --qos-durability transient_local \
+  --once
+```
+
+### Window 2 — Domain 20: inspect the bridged output
+
+```bash
+export ROS_DOMAIN_ID=20
+echo "$ROS_DOMAIN_ID"
+ros2 topic info /fr3_reference/cartesian_path --verbose
+ros2 topic echo /fr3_reference/cartesian_path nav_msgs/msg/Path \
+  --qos-reliability reliable \
+  --qos-durability transient_local \
+  --once
+```
+
+The observed publisher was panda_to_fr3_bridge_20. Path messages were received successfully. Compare their frame, positions and orientations with Window 1.
+
+Checking /panda_reference/cartesian_path in Domain 20 returned Unknown topic because the configured bridge remaps it to /fr3_reference/cartesian_path. This was not evidence that the generator had failed. RViz and the executor must use the destination name.
+
+### Window 2 — Domain 20: compare with the current TCP orientation
+
+After the one-shot echo finishes, run this as a separate command:
+
+```bash
+ros2 run tf2_ros tf2_echo fr3_link0 fr3_hand_tcp
+```
+
+Read the line labeled Quaternion (xyzw), not the last matrix row. The recorded measurement was [-0.014, 1.000, -0.017, 0.011], close to (0, 1, 0, 0), whereas the default target was (0, 0, 0, 1). That substantial orientation change explains why a pose-based approach can request a flip even though the generated XYZ path is straight.
+
+Press Ctrl+C to stop tf2_echo before entering another command. A message such as:
+
+```text
+[rclcpp]: signal_handler(SIGINT/SIGTERM)
+```
+
+after Ctrl+C normally records the requested shutdown; it is not itself a planning failure. Stopping an echo only stops that diagnostic process. Stopping the Generator or Bridge interrupts their role in the pipeline.
+
+### Apply the correction and compare previews
+
+Pass all four desired orientation parameters explicitly, using a fresh TF measurement when the goal is to preserve the current orientation. Confirm the path frame is fr3_link0 and the executor's end-effector link is fr3_hand_tcp before copying these values.
+
+For the recorded sample, the overrides are:
+
+```bash
+-p orientation_x:=-0.014 \
+-p orientation_y:=1.000 \
+-p orientation_z:=-0.017 \
+-p orientation_w:=0.011
+```
+
+Use the controlled comparison below: identical XYZ coordinates and initial joint state, with only target orientation changed. Keep execute=false, confirm the new message in both domains, and replan. Observe Approach and Cartesian segments separately.
+
 ## Read the current TCP pose
 
 Run in the FR3 environment:
