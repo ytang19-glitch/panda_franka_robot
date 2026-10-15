@@ -341,23 +341,14 @@ int main(int argc, char ** argv)
       e.what());
     result = 1;
   }
-  executor.cancel();
-  if (spinner.joinable()) {
-    spinner.join();
-  }
-  rclcpp::shutdown();
-<<<<<<< HEAD
-  return return_code;
-}
 
   executor.cancel();
+
   if (spinner.joinable()) {
     spinner.join();
   }
+  
   rclcpp::shutdown();
-  return return_code;
-}
-=======
   return result;
 }
->>>>>>> 2e3
+
