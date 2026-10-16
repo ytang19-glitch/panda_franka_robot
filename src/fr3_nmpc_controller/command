@@ -1,0 +1,3 @@
+ros2 param get /fr3_arm_controller command_interfaces
+ros2 param get /fr3_arm_controller state_interfaces
+ros2 control list_controllers --verbose
