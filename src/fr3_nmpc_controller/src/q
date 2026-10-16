@@ -94,3 +94,133 @@ state interfaces
 	fr3_joint7/velocity
 	joint_3_position/elbow_state
 	joint_4_sign/elbow_state
+
+
+
+
+1111
+
+
+yujietang@Yujie-Ubuntu-PC:~/panda_franka_robot$ ros2 param get /fr3_arm_controller command_interfaces
+ros2 param get /fr3_arm_controller state_interfaces
+ros2 control list_controllers --verbose
+2026-10-16 16:50:20.476 [RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7029: open_and_lock_file failed -> Function open_port_internal
+2026-10-16 16:50:20.477 [RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7033: open_and_lock_file failed -> Function open_port_internal
+String values are: ['effort']
+2026-10-16 16:50:24.021 [RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7029: open_and_lock_file failed -> Function open_port_internal
+2026-10-16 16:50:24.022 [RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7033: open_and_lock_file failed -> Function open_port_internal
+String values are: ['position', 'velocity']
+2026-10-16 16:50:26.418 [RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7029: open_and_lock_file failed -> Function open_port_internal
+2026-10-16 16:50:26.419 [RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7033: open_and_lock_file failed -> Function open_port_internal
+[INFO] [1792191027.040428426] [_ros2cli_2747653]: waiting for service /controller_manager/list_controllers to become available...
+joint_state_broadcaster        joint_state_broadcaster/JointStateBroadcaster               active
+	update_rate: 1000 Hz
+	is_async: False
+	claimed interfaces:
+	required command interfaces:
+	required state interfaces:
+		fr3_joint1/position
+		fr3_joint1/velocity
+		fr3_joint1/effort
+		fr3_joint2/position
+		fr3_joint2/velocity
+		fr3_joint2/effort
+		fr3_joint3/position
+		fr3_joint3/velocity
+		fr3_joint3/effort
+		fr3_joint4/position
+		fr3_joint4/velocity
+		fr3_joint4/effort
+		fr3_joint5/position
+		fr3_joint5/velocity
+		fr3_joint5/effort
+		fr3_joint6/position
+		fr3_joint6/velocity
+		fr3_joint6/effort
+		fr3_joint7/position
+		fr3_joint7/velocity
+		fr3_joint7/effort
+		fr3/robot_state
+		fr3/robot_model
+		0/cartesian_pose_state
+		1/cartesian_pose_state
+		2/cartesian_pose_state
+		3/cartesian_pose_state
+		4/cartesian_pose_state
+		5/cartesian_pose_state
+		6/cartesian_pose_state
+		7/cartesian_pose_state
+		8/cartesian_pose_state
+		9/cartesian_pose_state
+		10/cartesian_pose_state
+		11/cartesian_pose_state
+		12/cartesian_pose_state
+		13/cartesian_pose_state
+		14/cartesian_pose_state
+		15/cartesian_pose_state
+		joint_3_position/elbow_state
+		joint_4_sign/elbow_state
+		fr3/robot_time
+	chained to interfaces:
+	exported reference interfaces:
+	exported state interfaces:
+fr3_arm_controller             joint_trajectory_controller/JointTrajectoryController       active
+	update_rate: 1000 Hz
+	is_async: False
+	claimed interfaces:
+		fr3_joint1/effort
+		fr3_joint2/effort
+		fr3_joint3/effort
+		fr3_joint4/effort
+		fr3_joint5/effort
+		fr3_joint6/effort
+		fr3_joint7/effort
+	required command interfaces:
+		fr3_joint1/effort
+		fr3_joint2/effort
+		fr3_joint3/effort
+		fr3_joint4/effort
+		fr3_joint5/effort
+		fr3_joint6/effort
+		fr3_joint7/effort
+	required state interfaces:
+		fr3_joint1/position
+		fr3_joint1/velocity
+		fr3_joint2/position
+		fr3_joint2/velocity
+		fr3_joint3/position
+		fr3_joint3/velocity
+		fr3_joint4/position
+		fr3_joint4/velocity
+		fr3_joint5/position
+		fr3_joint5/velocity
+		fr3_joint6/position
+		fr3_joint6/velocity
+		fr3_joint7/position
+		fr3_joint7/velocity
+	chained to interfaces:
+	exported reference interfaces:
+	exported state interfaces:
+franka_robot_state_broadcaster franka_robot_state_broadcaster/FrankaRobotStateBroadcaster  active
+	update_rate: 1000 Hz
+	is_async: False
+	claimed interfaces:
+	required command interfaces:
+	required state interfaces:
+		fr3/robot_state
+	chained to interfaces:
+	exported reference interfaces:
+	exported state interfaces:
+yujietang@Yujie-Ubuntu-PC:~/panda_franka_robot$ _and_lock_file failed -> Function open_port_internal
+joint_state_broadcaster        joint_state_broadcaster/JointStateBroadcaster               active
+fr3_arm_controller             joint_trajectory_controller/JointTrajectoryController       active
+franka_robot_state_broadcaster franka_robot_state_broadcaster/FrankaRobotStateBroadcaster  active
+2026-10-16 16:45:14.470 [RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7029: open_and_lock_file failed -> Function open_port_internal
+2026-10-16 16:45:14.471 [RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7033: open_and_lock_file failed -> Function open_port_internal
+[INFO] [1792190715.103427112] [_ros2cli_2740745]: waiting for service /controller_manager/list_hardware_interfaces to become available...
+command interfaces
+        0/cartesian_pose_command [available] [unclaimed]
+        1/cartesian_pose_command [available] [unclaimed]
+        joint_4_sign/elbow_statetateable] [unclaimed]imed]med]
+
+
