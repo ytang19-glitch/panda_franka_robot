@@ -1,0 +1,96 @@
+_and_lock_file failed -> Function open_port_internal
+joint_state_broadcaster        joint_state_broadcaster/JointStateBroadcaster               active
+fr3_arm_controller             joint_trajectory_controller/JointTrajectoryController       active
+franka_robot_state_broadcaster franka_robot_state_broadcaster/FrankaRobotStateBroadcaster  active
+2026-10-16 16:45:14.470 [RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7029: open_and_lock_file failed -> Function open_port_internal
+2026-10-16 16:45:14.471 [RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7033: open_and_lock_file failed -> Function open_port_internal
+[INFO] [1792190715.103427112] [_ros2cli_2740745]: waiting for service /controller_manager/list_hardware_interfaces to become available...
+command interfaces
+	0/cartesian_pose_command [available] [unclaimed]
+	1/cartesian_pose_command [available] [unclaimed]
+	10/cartesian_pose_command [available] [unclaimed]
+	11/cartesian_pose_command [available] [unclaimed]
+	12/cartesian_pose_command [available] [unclaimed]
+	13/cartesian_pose_command [available] [unclaimed]
+	14/cartesian_pose_command [available] [unclaimed]
+	15/cartesian_pose_command [available] [unclaimed]
+	2/cartesian_pose_command [available] [unclaimed]
+	3/cartesian_pose_command [available] [unclaimed]
+	4/cartesian_pose_command [available] [unclaimed]
+	5/cartesian_pose_command [available] [unclaimed]
+	6/cartesian_pose_command [available] [unclaimed]
+	7/cartesian_pose_command [available] [unclaimed]
+	8/cartesian_pose_command [available] [unclaimed]
+	9/cartesian_pose_command [available] [unclaimed]
+	fr3_joint1/effort [available] [claimed]
+	fr3_joint1/position [available] [unclaimed]
+	fr3_joint1/velocity [available] [unclaimed]
+	fr3_joint2/effort [available] [claimed]
+	fr3_joint2/position [available] [unclaimed]
+	fr3_joint2/velocity [available] [unclaimed]
+	fr3_joint3/effort [available] [claimed]
+	fr3_joint3/position [available] [unclaimed]
+	fr3_joint3/velocity [available] [unclaimed]
+	fr3_joint4/effort [available] [claimed]
+	fr3_joint4/position [available] [unclaimed]
+	fr3_joint4/velocity [available] [unclaimed]
+	fr3_joint5/effort [available] [claimed]
+	fr3_joint5/position [available] [unclaimed]
+	fr3_joint5/velocity [available] [unclaimed]
+	fr3_joint6/effort [available] [claimed]
+	fr3_joint6/position [available] [unclaimed]
+	fr3_joint6/velocity [available] [unclaimed]
+	fr3_joint7/effort [available] [claimed]
+	fr3_joint7/position [available] [unclaimed]
+	fr3_joint7/velocity [available] [unclaimed]
+	joint_3_position/elbow_command [available] [unclaimed]
+	joint_4_sign/elbow_command [available] [unclaimed]
+	vx/cartesian_velocity [available] [unclaimed]
+	vy/cartesian_velocity [available] [unclaimed]
+	vz/cartesian_velocity [available] [unclaimed]
+	wx/cartesian_velocity [available] [unclaimed]
+	wy/cartesian_velocity [available] [unclaimed]
+	wz/cartesian_velocity [available] [unclaimed]
+state interfaces
+	0/cartesian_pose_state
+	1/cartesian_pose_state
+	10/cartesian_pose_state
+	11/cartesian_pose_state
+	12/cartesian_pose_state
+	13/cartesian_pose_state
+	14/cartesian_pose_state
+	15/cartesian_pose_state
+	2/cartesian_pose_state
+	3/cartesian_pose_state
+	4/cartesian_pose_state
+	5/cartesian_pose_state
+	6/cartesian_pose_state
+	7/cartesian_pose_state
+	8/cartesian_pose_state
+	9/cartesian_pose_state
+	fr3/robot_model
+	fr3/robot_state
+	fr3/robot_time
+	fr3_joint1/effort
+	fr3_joint1/position
+	fr3_joint1/velocity
+	fr3_joint2/effort
+	fr3_joint2/position
+	fr3_joint2/velocity
+	fr3_joint3/effort
+	fr3_joint3/position
+	fr3_joint3/velocity
+	fr3_joint4/effort
+	fr3_joint4/position
+	fr3_joint4/velocity
+	fr3_joint5/effort
+	fr3_joint5/position
+	fr3_joint5/velocity
+	fr3_joint6/effort
+	fr3_joint6/position
+	fr3_joint6/velocity
+	fr3_joint7/effort
+	fr3_joint7/position
+	fr3_joint7/velocity
+	joint_3_position/elbow_state
+	joint_4_sign/elbow_state
