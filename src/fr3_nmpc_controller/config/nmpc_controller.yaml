@@ -1,0 +1,20 @@
+# Registration overlay only. Does not start or switch a controller.
+# Merge with the existing controller_manager configuration; do not replace it.
+controller_manager:
+  ros__parameters:
+    fr3_nmpc_controller:
+      type: fr3_nmpc_controller/Fr3NmpcController
+
+fr3_nmpc_controller:
+  ros__parameters:
+    joints:
+      - fr3_joint1
+      - fr3_joint2
+      - fr3_joint3
+      - fr3_joint4
+      - fr3_joint5
+      - fr3_joint6
+      - fr3_joint7
+    # Only 'joints' is implemented today. No fake torque limits or enable flag.
+    # Add model path, horizon, weights, validated limits and timeout policy
+    # alongside their implementation, not as silently unused parameters.

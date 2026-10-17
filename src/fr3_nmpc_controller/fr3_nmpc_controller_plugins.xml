@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<library path="fr3_nmpc_controller">
+  <class name="fr3_nmpc_controller/Fr3NmpcController"
+         type="fr3_nmpc_controller::Fr3NmpcController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>Development-only FR3 NMPC scaffold. Activation disabled; no commands.</description>
+  </class>
+</library>
