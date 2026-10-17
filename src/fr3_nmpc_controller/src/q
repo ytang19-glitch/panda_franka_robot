@@ -1,3 +1,137 @@
+FR3 torque NMPC: verified hardware interfaces and implementation plan
+===================================================================
+
+Status: hardware interface inspection complete; NMPC controller NOT implemented.
+Evidence date: 2026-10-16.
+This file is documentation, not C++ source or an executable shell script.
+
+1. Verified configuration
+------------------------
+Robot joint order: fr3_joint1, fr3_joint2, fr3_joint3, fr3_joint4,
+                  fr3_joint5, fr3_joint6, fr3_joint7.
+Existing controller: fr3_arm_controller
+Type: joint_trajectory_controller/JointTrajectoryController
+Lifecycle state: active
+Command interfaces parameter: ['effort']
+State interfaces parameter: ['position', 'velocity']
+Configured controller update rate: 1000 Hz; is_async: False.
+
+The existing controller claims all seven fr3_jointN/effort interfaces.
+The joint-state and Franka-state broadcasters are active and claim no commands.
+Available state interfaces include joint position/velocity/effort and
+fr3/robot_model, fr3/robot_state, fr3/robot_time.
+
+Conclusion: implement a separate ros2_control effort controller for torque NMPC.
+The current trajectory controller is a baseline, not an NMPC controller.
+Configured 1000 Hz does not establish measured deadlines or 1 ms solver time.
+
+2. Prediction model and optimization
+------------------------------------
+State x = [q; v] has 14 components. Input tau_total has 7 components.
+Nominal free-space dynamics:
+  q_dot = v
+  v_dot = M(q)^(-1) * (tau_total - c(q,v) - g(q))
+where c(q,v) denotes Coriolis/centrifugal torque, not the C matrix itself.
+Use a validated FR3 model, correct joint order, tool inertia and payload.
+Evaluate dynamics at predicted states and integrate to obtain x[k+1]=F(x[k],u[k]).
+The Python teaching simulation's independent-joint parameters are not FR3 data.
+
+Optimize timed joint tracking over a finite horizon, with position/velocity,
+torque and torque-rate constraints and explicit solver status checks.
+An initial state outside limits needs defined rejection/recovery behavior.
+A nominal model alone does not establish robustness to uncertain payload/contact.
+
+Maintain a documented mapping between modeled total torque and the installed
+Franka effort-command convention. Check driver gravity compensation and model
+payload consistency; never send gravity twice or assume torque conventions match.
+
+3. Proposed package files (not implemented by this document)
+----------------------------------------------------------
+include/fr3_nmpc_controller/robot_model.hpp
+include/fr3_nmpc_controller/optimizer.hpp
+include/fr3_nmpc_controller/controller.hpp
+include/fr3_nmpc_controller/solver_worker.hpp
+src/robot_model.cpp         -- validated prediction model and integration
+src/optimizer.cpp           -- horizon, objective, constraints and warm start
+src/controller.cpp          -- lifecycle, state reads and effort writes
+src/solver_worker.cpp       -- solver thread and timestamped result exchange
+config/nmpc_controller.yaml -- joint names, limits, model, weights and rates
+fr3_nmpc_controller_plugins.xml
+CMakeLists.txt
+package.xml
+test/                      -- model, limits, timeout and integration checks
+
+Repository inspection at this update found command, src/q, and an empty
+src/robot_model.cpp. There were no package build files at this directory root.
+The directory therefore does not yet constitute a buildable controller package.
+
+4. Dependencies for the proposed approach
+-----------------------------------------
+ROS 2 Jazzy / ament_cmake: build and ROS integration.
+controller_interface, hardware_interface, pluginlib: controller plugin.
+rclcpp, rclcpp_lifecycle, realtime_tools: lifecycle and data exchange.
+trajectory_msgs: timed reference messages.
+Eigen3: C++ linear algebra.
+Compatible franka_ros2/libfranka: robot driver; franka_semantic_components if used.
+Pinocchio + validated FR3 model: predicted nonlinear dynamics.
+CasADi with IPOPT: optimization and derivatives; confirm compatible C++ builds
+and differentiable model integration rather than assuming numeric Pinocchio
+calls automatically become CasADi expressions.
+Threads: solver worker.
+HPP-FCL is optional for obstacle-distance constraints.
+Crocoddyl and qpOASES are alternative solver paths, not mandatory additions.
+Vision dependencies are unnecessary for initial joint tracking.
+
+5. Control loop and reference integration
+-----------------------------------------
+Read the seven position and seven velocity state interfaces in the hardware
+update loop. Request exactly the seven fr3_jointN/effort command interfaces.
+Run blocking nonlinear solves outside that loop. Transfer state snapshots,
+reference IDs/start times and valid timestamped solutions without blocking
+the update loop. Account for solver latency when selecting the command.
+Implement and test torque/rate limits, stale-result handling, invalid feedback,
+solver failure, activation/deactivation and trajectory completion.
+Holding the last torque or writing zero is not automatically a safe fallback.
+
+The reference is a timed JointTrajectory, not nav_msgs/Path.
+MoveIt may supply the reference without executing it during an NMPC run.
+The current reference bridge rejects multi-segment display trajectories; an
+approach plus Cartesian plan needs explicit sequence/timing handling.
+Reference start timing must agree with actual tracking start.
+
+Keep fr3_arm_controller active during development.
+After validation, controller-manager switching must release its effort
+interfaces before the new NMPC controller can claim them. Do not run competing
+arm command owners. Broadcasters can remain active.
+No controller-switch or robot-motion commands are supplied in this document.
+
+6. Validation and experimental comparison
+-----------------------------------------
+First validate model quantities and predicted dynamics offline.
+Then validate closed-loop tracking and fault handling in a compatible effort
+simulation. Finally follow laboratory procedures for hardware integration.
+Record the same reference, measured states, applied commands, tracking errors,
+solver duration, solution age and deadline misses for separate baseline and
+NMPC trials, with matching initial state, speed and payload.
+Measured hardware improvement cannot be inferred from a synthetic-model plot.
+
+7. Read-only checks used to obtain the evidence
+----------------------------------------------
+source /opt/ros/jazzy/setup.bash
+source ~/panda_franka_robot/install/setup.bash
+export ROS_DOMAIN_ID=20
+ros2 param get /fr3_arm_controller command_interfaces
+ros2 param get /fr3_arm_controller state_interfaces
+ros2 control list_controllers --verbose
+ros2 control list_hardware_interfaces
+
+Fast DDS shared-memory errors appeared, but the service queries returned.
+These logs alone do not establish a communication failure or a solver failure.
+The malformed trailing pasted lines below are retained as evidence, not commands.
+
+8. Original terminal transcript (preserved verbatim)
+---------------------------------------------------
+
 _and_lock_file failed -> Function open_port_internal
 joint_state_broadcaster        joint_state_broadcaster/JointStateBroadcaster               active
 fr3_arm_controller             joint_trajectory_controller/JointTrajectoryController       active
