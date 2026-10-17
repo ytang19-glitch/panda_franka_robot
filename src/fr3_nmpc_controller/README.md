@@ -132,13 +132,13 @@ holding the last torque or writing zero is not automatically safe.
 | --- | --- | --- |
 | Scaffold build | `ament_cmake`, `controller_interface`, `hardware_interface`, `pluginlib`, `rclcpp`, `rclcpp_lifecycle` | Build and register the inactive controller plugin |
 | Scaffold tests | `ament_cmake_gtest` | Backend rejection checks |
-| Future model | Eigen3, Pinocchio, validated FR3 model | Linear algebra and predicted rigid-body dynamics |
+| Numerical dependencies | Eigen3 and Pinocchio (linked); validated FR3 model still needed | Build-time model dependencies; model implementation remains missing |
 | Future optimizer | CasADi with IPOPT | NLP formulation, derivatives and solution |
 | Future worker/reference | `realtime_tools`, `trajectory_msgs`, threading support | Data exchange and timed reference handling |
 | Hardware integration | Compatible `franka_ros2` and `libfranka`; optionally `franka_semantic_components` | Existing driver and measured-state model access |
 | Optional extensions | HPP-FCL, vision components | Collision distances and visual feedback |
 
-Future dependencies are not linked or declared as working features today.
+Eigen3 and Pinocchio are now discovered, linked and exported by CMake, with `eigen` and `pinocchio` declared in package.xml. The remaining future dependencies are not linked or declared as working features today.
 Crocoddyl and qpOASES are alternatives, not required additions to CasADi/IPOPT.
 A numeric Pinocchio backend does not automatically provide a differentiable
 CasADi graph; validate the selected symbolic/code-generation integration.

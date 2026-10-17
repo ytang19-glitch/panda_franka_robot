@@ -7,6 +7,8 @@ find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+# Numerical dynamics dependencies. No validated FR3 model is loaded yet.
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 find_package(pinocchio REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
@@ -33,6 +35,7 @@ ament_target_dependencies(${PROJECT_NAME}
 
 # Match the plain linking signature used by ament_target_dependencies.
 target_link_libraries(${PROJECT_NAME}
+  Eigen3::Eigen
   pinocchio::pinocchio
 )
 
@@ -82,6 +85,7 @@ ament_export_dependencies(
   pluginlib
   rclcpp
   rclcpp_lifecycle
+  Eigen3
   pinocchio
 )
 
