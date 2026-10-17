@@ -123,7 +123,8 @@ JointVector RobotModel::acceleration(const RobotState & x, const JointVector & t
 {
   const auto m=mass(x.q);
   const Eigen::Map<const Matrix> M(m.data());
-  const Vector rhs=vector(tau)-vector(nonlinear_effects(x));
+  
+  const Vector rhs=vector(tau)-vector(nonlinear_effects(x)); // core compute: m(q)q''=t-c(q,q')-g(q)
   return array(M.ldlt().solve(rhs));
 }
 RobotState RobotModel::step(const RobotState & x, const JointVector & tau, double dt) const
