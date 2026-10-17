@@ -10,3 +10,32 @@ Perhaps you should add the directory containing `casadi.pc'
 to the PKG_CONFIG_PATH environment variable
 Package 'casadi', required by 'virtual:world', not found
 yujietang@Yujie-Ubuntu-PC:~/panda_franka_robot$ 
+
+
+These messages mean **`pkg-config` cannot find the libraries**. They do not prove Pinocchio or CasADi is missing—your C++ package will use **CMake** to locate them.
+
+First check Python installations:
+
+```bash
+python3 -c "import casadi; print('CasADi:', casadi.__version__); print(casadi.__file__)"
+python3 -c "import pinocchio; print('Pinocchio:', pinocchio.__version__); print(pinocchio.__file__)"
+```
+
+Then search common installation locations for CMake configuration files:
+
+```bash
+find /usr /opt "$HOME/.local" "$HOME/venvs" \
+  -type f \( \
+    -iname '*pinocchio*config.cmake' -o \
+    -iname '*casadi*config.cmake' \
+  \) 2>/dev/null
+```
+
+Also provide the robot-description paths:
+
+```bash
+ros2 pkg prefix --share franka_description
+ros2 pkg prefix --share franka_bringup
+```
+
+**Paste these results before installing anything.** They will tell us whether the dependencies are absent or just need their installation paths supplied to CMake. Leave RViz and the existing controller running; these checks do not move the robot.
