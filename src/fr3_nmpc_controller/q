@@ -39,3 +39,22 @@ ros2 pkg prefix --share franka_bringup
 ```
 
 **Paste these results before installing anything.** They will tell us whether the dependencies are absent or just need their installation paths supplied to CMake. Leave RViz and the existing controller running; these checks do not move the robot.
+
+yujietang@Yujie-Ubuntu-PC:~/panda_franka_robot$ python3 -c "import casadi; print('CasADi:', casadi.__version__); print(casadi.__file__)"
+python3 -c "import pinocchio; print('Pinocchio:', pinocchio.__version__); print(pinocchio.__file__)"
+```
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'casadi'
+Pinocchio: 4.1.0
+/opt/ros/jazzy/lib/python3.12/site-packages/pinocchio/__init__.py
+> find /usr /opt "$HOME/.local" "$HOME/venvs" \
+  -type f \( \
+    -iname '*pinocchio*config.cmake' -o \
+    -iname '*casadi*config.cmake' \
+  \) 2>/dev/null
+> ros2 pkg prefix --share franka_description
+> ros2 pkg prefix --share franka_bringup
+> 
+
+
