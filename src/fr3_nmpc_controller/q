@@ -58,3 +58,5 @@ Pinocchio: 4.1.0
 > 
 
 
+
+find /opt/ros/jazzy -type f -iname '*pinocchio*config.cmake' 2>/dev/null
