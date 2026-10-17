@@ -3,7 +3,8 @@
 This package now includes a numerical Pinocchio robot model and an optional
 CasADi/IPOPT multiple-shooting optimizer. **It is still not a working hardware
 controller.** The ROS controller plugin continues to refuse activation, the
-worker is a placeholder, and no commands are written to hardware.
+background solver worker is implemented for non-real-time use, and no commands
+are written to hardware.
 
 `ready()` means initialized, not experimentally validated or hardware-safe.
 
@@ -16,11 +17,12 @@ worker is a placeholder, and no commands are written to hardware.
 | [`optimizer.hpp`](include/fr3_nmpc_controller/optimizer.hpp) | Explicit solver configuration, reference horizon and offline result |
 | [`optimizer.cpp`](src/optimizer.cpp) | Optional CasADi/IPOPT solve, finite-difference model callback, warm start and feasibility checks |
 | [`controller.hpp`](include/fr3_nmpc_controller/controller.hpp), [`controller.cpp`](src/controller.cpp) | ROS 2 effort/q/dq interface declarations; activation disabled, no writes |
-| [`solver_worker.hpp`](include/fr3_nmpc_controller/solver_worker.hpp), [`solver_worker.cpp`](src/solver_worker.cpp) | Placeholder only; no thread, command selection or validity policy |
+| [`solver_worker.hpp`](include/fr3_nmpc_controller/solver_worker.hpp), [`solver_worker.cpp`](src/solver_worker.cpp) | Non-RT background solver, latest-pending scheduling, reference/age checks and explicit stop |
 | [`check_model.cpp`](examples/check_model.cpp) | Offline model-loading and gravity-equilibrium consistency check; no robot connection |
 | [`test_robot_model.cpp`](test/test_robot_model.cpp) | Model equilibrium, invalid input and failed-reload tests using synthetic fixture |
 | [`test_optimizer.cpp`](test/test_optimizer.cpp) | Optional nominal solve, rate-bound, warm-start and NaN rejection tests |
-| [`test_unimplemented_backends.cpp`](test/test_unimplemented_backends.cpp) | Unloaded model/optimizer and unimplemented worker must not produce a command |
+| [`test_unimplemented_backends.cpp`](test/test_unimplemented_backends.cpp) | Unloaded model/optimizer and unstarted worker must not produce a command |
+| [`test_solver_worker.cpp`](test/test_solver_worker.cpp) | Standalone thread scheduling, expiry, exception and lifecycle regression checks |
 | [`seven_joint_test.urdf`](test/fixtures/seven_joint_test.urdf) | Synthetic test geometry/inertia; NOT an FR3 model |
 | [`nmpc_controller.yaml`](config/nmpc_controller.yaml) | Registration overlay; only joint-order parameter is consumed by controller |
 | [`fr3_nmpc_controller_plugins.xml`](fr3_nmpc_controller_plugins.xml) | Plugin discovery |
@@ -117,18 +119,88 @@ correctness and timing measurements.
 `max_cpu_time_s` is IPOPT's CPU budget, not a hard wall-time watchdog. Results
 record solve wall time. Use one optimizer per worker; calls are not thread-safe.
 
-**Results are offline candidates.** `valid_until_ns`, `state_time_ns` and
-`reference_id` remain zero. The future worker must assign validated timing and
-reference metadata; the controller must reject absent/expired validity.
-A result does not automatically authorize an actuator command.
+**Direct optimizer results are offline candidates.** Their `valid_until_ns`,
+`state_time_ns` and `reference_id` remain zero. The worker now assigns age and
+reference metadata from an accepted request. This bookkeeping does not establish
+physical command safety or automatically authorize an actuator command.
 
 The constant-reference overload exists for compatibility only. It assumes a
 previous total torque equal to model gravity, so it is not an online command
 history interface. Use the explicit horizon/previous-torque overload in tracking.
 
+## SolverWorker — what changed
+
+`solver_worker.hpp/.cpp` now run the existing optimizer on one background thread.
+This is a non-real-time integration component, not a hardware command adapter.
+
+| Method | Meaning |
+| --- | --- |
+| `start(optimizer, N, max_age_ns)` | Require a configured optimizer, explicit horizon and positive allowed state age; start one thread |
+| `submit(request)` | Copy/move a measured state, N+1 references, previous total torque, source timestamp and reference ID into one pending slot |
+| `latest()` | Copy the current result only while its reference and expiry remain valid |
+| `cancel_reference()` | Invalidate pending/in-flight results; does not interrupt a running solve |
+| `stop()` | Invalidate results, wake the thread and join it |
+| `ready()` | Thread has been started; does not imply a usable result exists |
+| `last_error()` | Non-RT diagnostic string |
+| `now_ns()` | Timestamp from the same monotonic clock used for expiry |
+
+Usage after model and optimizer configuration (not a standalone runnable program):
+
+```cpp
+auto optimizer = std::make_shared<Optimizer>();
+optimizer->configure(model, config);
+SolverWorker worker;
+worker.start(optimizer, config.horizon, chosen_max_state_age_ns);
+
+SolverRequest request;
+request.state = measured_state;
+request.reference_horizon = refs; // N+1 samples, aligned to this state snapshot
+request.previous_total_torque = previous_total_torque;
+request.state_time_ns = measured_snapshot_steady_time_ns;
+request.reference_id = current_reference_id;
+worker.submit(std::move(request));
+// Later, from a NON-REAL-TIME caller:
+auto result = worker.latest();
+worker.stop();
+```
+
+Do not stamp old feedback as fresh on receipt. The source state timestamp and
+`now_ns()` must use the same steady clock. ROS trajectory time remains separate;
+the caller must sample the references consistently at the state snapshot time.
+The worker cannot verify that the submitted timestamp describes the real sensor
+measurement, or that the submitted torque reflects the real actuator history.
+
+One pending slot replaces waiting snapshots, avoiding an unbounded queue.
+New reference IDs must increase within a run. Same-reference state timestamps
+must strictly increase. A new reference or cancellation invalidates in-flight
+results through a generation counter. Reference changes reset optimizer warm
+start. A solve failure clears the exposed result. Expiry is measured from source
+state time, including queue and solve time, not from solve completion.
+
+This is software freshness checking, not delay compensation. The returned
+first torque still corresponds to the supplied source state; selecting the right
+point in a delayed prediction or compensating latency is future work.
+
+**Do not call `submit()` or `latest()` in the 1 kHz controller update loop.**
+They take mutexes and may allocate/copy vectors. `latest()` is intentionally no
+longer `noexcept`, because copying its result can allocate. A preallocated,
+bounded handoff for the real-time loop is still needed.
+
+Lifecycle start/stop must be serialized by a single non-RT owner. The worker
+owns a shared optimizer reference; do not call or reconfigure that optimizer
+concurrently. `stop()` waits for a running solve to finish; it cannot preempt
+IPOPT. Callbacks used with the public dependency-injection API must return and
+must not call lifecycle methods on their own worker. This is not a hard deadline
+shutdown or a fallback controller.
+
+`start_with_solver()` exists for scheduler tests and alternate solvers. The real
+`start()` adapter uses the optimizer's convergence/constraint checks; the generic
+worker itself only checks convergence and finite first torque. It does not
+independently validate every predicted state, constraint or hardware torque limit.
+
 ## Dependencies and build
 
-Required: ROS 2 Jazzy development packages, Eigen3 and Pinocchio. Optional:
+Required: ROS 2 Jazzy development packages, Eigen3, Pinocchio and C++ threading support (`Threads::Threads`). Optional:
 compatible C++ CasADi with its IPOPT plugin. No Crocoddyl or qpOASES is required.
 
 ```bash
@@ -169,8 +241,8 @@ The actual FR3 reports effort commands and position/velocity states, with
 `fr3_arm_controller` currently claiming all seven effort interfaces. Keep it
 active during development. The plugin in this package still cannot activate.
 
-Pending: reference subscription/time synchronization, solver thread,
-nonblocking state/result exchange, measured-latency compensation, gravity and
+Pending: reference subscription/time synchronization, real-time-safe
+state/result exchange, measured-latency compensation, gravity and
 payload convention checks, hardware torque/rate limits, validated failure and
 completion behavior, simulation and hardware integration tests. Do not remove
 the activation guard just because a model or solve succeeds.
@@ -194,10 +266,11 @@ Completed checks:
 - CasADi 3.7.2 optimizer compiled with the backend both enabled and disabled.
 - Two NLP solves using a separate nonlinear test plant passed, including shifted
   warm start, first-step torque-rate checks and NaN-reference rejection.
+- Worker source compiled with C++17/pthreads and passed standalone tests for lifecycle, reference replacement, newest-pending state, metadata, nonfinite rejection, in-solve expiry and exceptions.
 - XML and README local-link checks passed.
 
 The Pinocchio and CasADi tests ran separately because the available binaries
-have different C++ ABIs. A combined Pinocchio/CasADi solve, ROS gtest execution,
+have different C++ ABIs. A combined Pinocchio/CasADi solve through the worker, ROS test execution,
 full Jazzy plugin build and real FR3 model/hardware remain untested. The
 synthetic test fixture is never an FR3 validation asset.
 

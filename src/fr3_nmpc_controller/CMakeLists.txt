@@ -10,6 +10,7 @@ find_package(rclcpp_lifecycle REQUIRED)
 # Numerical model backend: loading a URDF does not establish hardware validity.
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 find_package(pinocchio REQUIRED)
+find_package(Threads REQUIRED)
 
 # Keep model-only builds possible while CasADi is being installed.
 option(FR3_NMPC_WITH_CASADI "Build offline CasADi/IPOPT optimizer" OFF)
@@ -43,6 +44,7 @@ ament_target_dependencies(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
   Eigen3::Eigen
   pinocchio::pinocchio
+  Threads::Threads
 )
 
 if(FR3_NMPC_WITH_CASADI)
@@ -91,6 +93,10 @@ if(BUILD_TESTING)
       ${PROJECT_NAME}
     )
   endif()
+  # Scheduling tests inject a fake solver and do not need CasADi or hardware.
+  add_executable(test_solver_worker test/test_solver_worker.cpp)
+  target_link_libraries(test_solver_worker ${PROJECT_NAME} Threads::Threads)
+  add_test(NAME test_solver_worker COMMAND test_solver_worker)
   ament_add_gtest(test_robot_model test/test_robot_model.cpp)
   if(TARGET test_robot_model)
     target_link_libraries(test_robot_model ${PROJECT_NAME})
@@ -117,6 +123,7 @@ ament_export_dependencies(
   rclcpp_lifecycle
   Eigen3
   pinocchio
+  Threads
 )
 
 ament_package()
