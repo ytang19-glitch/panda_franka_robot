@@ -7,6 +7,7 @@ find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(pinocchio REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
   src/robot_model.cpp src/optimizer.cpp src/solver_worker.cpp src/controller.cpp)
@@ -14,8 +15,16 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-ament_target_dependencies(${PROJECT_NAME}
-  controller_interface hardware_interface pluginlib rclcpp rclcpp_lifecycle)
+ament_target_dependencies(controller_interface
+  hardware_interface
+  pluginlib
+  rclcpp
+  rclcpp_lifecycle
+  pinocchio
+)
+
+target_link_libraries(${PROJECT_NAME} PUBLIC pinocchio::pinocchio)
+
 pluginlib_export_plugin_description_file(controller_interface fr3_nmpc_controller_plugins.xml)
 
 install(TARGETS ${PROJECT_NAME} EXPORT export_${PROJECT_NAME}
