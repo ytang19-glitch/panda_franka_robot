@@ -369,3 +369,16 @@ colcon build --packages-select fr3_nmpc_controller \
 
 source install/setup.bash
 
+
+---
+cd ~/panda_franka_robot
+git pull --ff-only origin main
+source /opt/ros/jazzy/setup.bash
+
+colcon build --packages-select fr3_nmpc_controller \
+  --symlink-install \
+  --cmake-args -DFR3_NMPC_WITH_CASADI=OFF
+
+source install/setup.bash
+colcon test --packages-select fr3_nmpc_controller
+colcon test-result --verbose
