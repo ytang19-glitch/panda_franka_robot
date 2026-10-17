@@ -358,3 +358,14 @@ command interfaces
         joint_4_sign/elbow_statetateable] [unclaimed]imed]med]
 
 
+
+cd ~/panda_franka_robot
+git pull --ff-only origin main
+source /opt/ros/jazzy/setup.bash
+
+colcon build --packages-select fr3_nmpc_controller \
+  --symlink-install \
+  --cmake-args -DFR3_NMPC_WITH_CASADI=OFF
+
+source install/setup.bash
+
