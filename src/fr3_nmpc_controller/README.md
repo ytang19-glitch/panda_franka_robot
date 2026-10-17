@@ -1,209 +1,208 @@
-# FR3 torque NMPC controller — development scaffold
+# FR3 numerical dynamics and offline torque NMPC
 
-This ROS 2 Jazzy package establishes the C++ file structure for a future
-**dynamics-based nonlinear model predictive controller** for the real Franka FR3.
+This package now includes a numerical Pinocchio robot model and an optional
+CasADi/IPOPT multiple-shooting optimizer. **It is still not a working hardware
+controller.** The ROS controller plugin continues to refuse activation, the
+worker is a placeholder, and no commands are written to hardware.
 
-**It is not an implemented NMPC controller.** The model, optimizer and worker
-are explicit placeholders. The controller plugin can be built and discovered
-in a compatible ROS installation, but **activation always returns ERROR** and
-`update()` never writes commands. There is no parameter to enable motion.
-Do not deactivate your working arm controller to try this scaffold.
+`ready()` means initialized, not experimentally validated or hardware-safe.
 
-## Verified hardware contract
+## Files and responsibilities
 
-These observations come from the user's real FR3 inspection on 2026-10-16,
-not from a hardware test of this package.
+| File | Responsibility / current implementation |
+| --- | --- |
+| [`robot_model.hpp`](include/fr3_nmpc_controller/robot_model.hpp) | Seven-joint state, limits, mass matrix and model API |
+| [`robot_model.cpp`](src/robot_model.cpp) | Load URDF; compute mass, gravity, nonlinear effects, acceleration and RK4 step |
+| [`optimizer.hpp`](include/fr3_nmpc_controller/optimizer.hpp) | Explicit solver configuration, reference horizon and offline result |
+| [`optimizer.cpp`](src/optimizer.cpp) | Optional CasADi/IPOPT solve, finite-difference model callback, warm start and feasibility checks |
+| [`controller.hpp`](include/fr3_nmpc_controller/controller.hpp), [`controller.cpp`](src/controller.cpp) | ROS 2 effort/q/dq interface declarations; activation disabled, no writes |
+| [`solver_worker.hpp`](include/fr3_nmpc_controller/solver_worker.hpp), [`solver_worker.cpp`](src/solver_worker.cpp) | Placeholder only; no thread, command selection or validity policy |
+| [`check_model.cpp`](examples/check_model.cpp) | Offline model-loading and gravity-equilibrium consistency check; no robot connection |
+| [`test_robot_model.cpp`](test/test_robot_model.cpp) | Model equilibrium, invalid input and failed-reload tests using synthetic fixture |
+| [`test_optimizer.cpp`](test/test_optimizer.cpp) | Optional nominal solve, rate-bound, warm-start and NaN rejection tests |
+| [`test_unimplemented_backends.cpp`](test/test_unimplemented_backends.cpp) | Unloaded model/optimizer and unimplemented worker must not produce a command |
+| [`seven_joint_test.urdf`](test/fixtures/seven_joint_test.urdf) | Synthetic test geometry/inertia; NOT an FR3 model |
+| [`nmpc_controller.yaml`](config/nmpc_controller.yaml) | Registration overlay; only joint-order parameter is consumed by controller |
+| [`fr3_nmpc_controller_plugins.xml`](fr3_nmpc_controller_plugins.xml) | Plugin discovery |
+| [`CMakeLists.txt`](CMakeLists.txt), [`package.xml`](package.xml) | Build/export/dependency metadata |
+| [`src/q`](src/q), [`command`](command) | Historical interface logs/design notes and original read-only commands |
 
-| Item | Observed value | Design implication |
-| --- | --- | --- |
-| Current arm controller | `fr3_arm_controller`, `JointTrajectoryController`, active | Preserve as the baseline during development |
-| Command interface | `effort` for `fr3_joint1` through `fr3_joint7` | Future plugin outputs seven joint torque commands |
-| State interfaces | `position`, `velocity` | State contains seven angles and seven angular velocities |
-| Configured update rate | 1000 Hz, synchronous | Requested 1 ms controller period; not measured solver performance |
-| Effort ownership | All seven claimed by `fr3_arm_controller` | Future NMPC activation requires coordinated ownership transfer |
-| Other state interfaces | `fr3/robot_model`, `fr3/robot_state`, `fr3/robot_time` | Optional access through matching Franka semantic components |
+## RobotModel
 
-The original logs and extended design notes remain in [`src/q`](src/q).
-The [`command`](command) file contains read-only inspection commands; it is not
-a controller launcher or an installation script.
-
-## File structure
-
-```text
-fr3_nmpc_controller/
-├── include/fr3_nmpc_controller/
-│   ├── robot_model.hpp
-│   ├── optimizer.hpp
-│   ├── controller.hpp
-│   └── solver_worker.hpp
-├── src/
-│   ├── robot_model.cpp
-│   ├── optimizer.cpp
-│   ├── controller.cpp
-│   ├── solver_worker.cpp
-│   └── q
-├── config/
-│   └── nmpc_controller.yaml
-├── test/
-│   └── test_unimplemented_backends.cpp
-├── fr3_nmpc_controller_plugins.xml
-├── CMakeLists.txt
-├── package.xml
-├── command
-└── README.md
+```cpp
+RobotModel model;
+model.load("/absolute/path/to/expanded_fr3_arm.urdf");
+const auto M = model.mass(state.q);             // 49 values, column-major
+const auto g = model.gravity(state.q);         // N*m
+const auto h = model.nonlinear_effects(state);  // c(q,v) + g(q)
+const auto a = model.acceleration(state, total_torque);
+const auto next = model.step(state, total_torque, dt);
 ```
 
-## Meaning of each file
-
-| File | Role | Implemented now / next work |
-| --- | --- | --- |
-| [`robot_model.hpp`](include/fr3_nmpc_controller/robot_model.hpp) | Defines seven-joint vectors, measured state and dynamics API | Types and API exist; no robot model is loaded |
-| [`robot_model.cpp`](src/robot_model.cpp) | Future forward dynamics at predicted states | `ready()` returns false; acceleration throws instead of inventing dynamics |
-| [`optimizer.hpp`](include/fr3_nmpc_controller/optimizer.hpp) | Solver API and result format | Result includes total torque, state time, expiry, reference ID and convergence flag; timestamps are monotonic |
-| [`optimizer.cpp`](src/optimizer.cpp) | Future horizon, objective, constraints and warm start | Returns no solution; no CasADi/IPOPT solver exists yet |
-| [`solver_worker.hpp`](include/fr3_nmpc_controller/solver_worker.hpp) | Boundary between solver worker and hardware loop | Interface placeholder; no thread-safe exchange is implemented |
-| [`solver_worker.cpp`](src/solver_worker.cpp) | Future solver thread, scheduling and teardown | No thread starts; no result is published |
-| [`controller.hpp`](include/fr3_nmpc_controller/controller.hpp) | Declares the ROS 2 controller lifecycle and update methods | Declares `Fr3NmpcController` plugin class |
-| [`controller.cpp`](src/controller.cpp) | Hardware interface requests and lifecycle | Validates exact FR3 joint order, declares effort/q/dq interfaces, always refuses activation and performs no writes |
-| [`nmpc_controller.yaml`](config/nmpc_controller.yaml) | Controller-manager registration overlay and joint order | Does not switch or start a controller; only `joints` is currently consumed |
-| [`test_unimplemented_backends.cpp`](test/test_unimplemented_backends.cpp) | Regression check against fictitious actuator commands | Checks missing backend readiness, model rejection and absent solver/worker outputs |
-| [`fr3_nmpc_controller_plugins.xml`](fr3_nmpc_controller_plugins.xml) | Maps plugin name to C++ class and shared library | Enables plugin discovery through `pluginlib` |
-| [`CMakeLists.txt`](CMakeLists.txt) | Builds library, exports plugin, installs headers/config and registers tests | Uses C++17 and `ament_cmake` |
-| [`package.xml`](package.xml) | Package identity and currently used dependencies | Declares ROS controller and test dependencies |
-| [`src/q`](src/q) | Hardware evidence and implementation plan | Documentation, not compiled code |
-| [`command`](command) | Original inspection commands | Read-only CLI commands |
-| [`README.md`](README.md) | Package status, architecture and development instructions | This guide |
-
-Headers (`.hpp`) declare types and interfaces. Source files (`.cpp`) implement
-them. This separation lets the model and solver be tested independently of
-hardware integration.
-
-## Intended model and optimization
-
-The future state and control are:
+The implementation solves a linear system, rather than explicitly inverting M:
 
 $$
-x = \begin{bmatrix}q\\v\end{bmatrix},\qquad u=\tau_{\mathrm{total}}.
+M(q)\ddot q=\tau_{\mathrm{total}}-c(q,\dot q)-g(q).
 $$
 
-For nominal free-space prediction:
+`load()` accepts an expanded URDF file, not Xacro source. It requires a fixed
+base and exactly seven scalar joints in `fr3_joint1` through `fr3_joint7` order.
+Movable finger joints must be locked/reduced before export. Preserve tool and
+payload inertias in the arm model rather than deleting their mass arbitrarily.
+No automatic gripper reduction or payload estimation is implemented.
 
-$$
-\dot q=v,\qquad
-M(q)\dot v = \tau_{\mathrm{total}}-c(q,v)-g(q).
-$$
+Checks include finite position/velocity/effort limits, positive mass,
+physically plausible inertias, and positive-definite mass matrix at a test
+configuration. Failure leaves the object unloaded. These checks establish
+numerical consistency, not that the URDF matches your physical FR3. Compare
+quantities against the Franka model and verify tool/payload/base frames before
+hardware use.
 
-Here `c(q,v)` is the Coriolis/centrifugal torque vector. Numerical integration
-produces `x[k+1] = F(x[k], u[k])`. Use a validated FR3 model with correct joint
-order, inertial data and tool/payload definition. The existing Python synthetic
-joint simulation is a learning example and cannot substitute for this model.
+Gravity defaults to `[0,0,-9.81]` in the URDF base frame. Supply the correct
+vector to `load()` for a differently oriented base. The backend includes URDF
+rigid-body dynamics; it does not identify friction, contact or disturbances.
+`step()` holds total torque constant during one RK4 step.
 
-The future objective will penalize joint position/velocity tracking error,
-control effort and command variation, subject to joint, torque and torque-rate
-limits. Limits must match the chosen total-versus-command torque convention.
-Do not copy placeholder limits or assume adding a nonlinear model provides
-payload robustness, collision avoidance or stability guarantees.
+Workspace is allocated in numerical model calls. This is an offline/prototype
+API, not suitable for a 1 kHz hardware update loop as implemented. Do not reload
+a model while the optimizer uses it.
 
-The installed Franka driver's gravity-compensation convention must be checked
-before defining the effort mapping. If the driver adds gravity, a model using
-total torque needs a consistent conversion. The scaffold does not implement
-that mapping or any torque output.
+## Optimizer
 
-## Intended runtime architecture
+Build with `FR3_NMPC_WITH_CASADI=ON` to include the backend. Default is OFF so
+model-only work can proceed while CasADi is absent. With it OFF, configuration
+throws a clear error and solve returns no result.
 
-1. The controller update loop reads q/dq with timestamps.
-2. A separate solver worker receives a consistent state snapshot and timed reference.
-3. The worker solves the finite-horizon problem and labels the result with its
-   reference ID, source state time, validity and convergence information.
-4. The hardware loop accepts only valid results, accounts for latency, enforces
-   torque/rate limits and writes commands through its claimed effort interfaces.
-5. Tested failure behavior handles solver failure, stale results, invalid state,
-   activation, completion and deactivation.
+```cpp
+auto model = std::make_shared<RobotModel>();
+model->load(urdf_path);
+OptimizerConfig config;
+// Set horizon, dt and cost weights as needed.
+// REQUIRED: provide explicit positive, verified limits; defaults are zero.
+config.torque_limit = verified_total_torque_limits;
+config.torque_rate_limit = verified_total_torque_rate_limits;
+config.acceleration_limit = verified_acceleration_limits;
+Optimizer solver;
+solver.configure(model, config);
+// refs contains N+1 states sampled at t, t+dt, ... t+N*dt.
+auto candidate = solver.solve(measured_state, refs, previous_total_torque);
+if (!candidate) {
+  // Offline caller handles solver.last_error(); no command is produced.
+}
+```
 
-These are future implementation requirements. No worker thread or exchange is
-implemented yet. Blocking solves and ordinary ROS publication do not belong in
-the real-time update path. A lower-frequency solver with a faster controller
-loop needs an explicit command-selection/interpolation and expiry policy;
-holding the last torque or writing zero is not automatically safe.
+The optimizer provides:
 
-## Dependencies
+- State `[q;dq]`, total-torque inputs and RK4 multiple shooting.
+- Position/velocity bounds from the URDF, explicit total-torque/rate/acceleration bounds.
+- Position and velocity tracking costs, normalized torque/delta-torque penalties,
+  and terminal position cost. Weights are development defaults, not FR3 tuning.
+- Shifted primal warm start; `reset()` clears it for a new reference/time origin.
+- IPOPT success check and post-solve evaluation of all NLP constraint residuals.
+- `nullopt` and `last_error()` on invalid inputs, infeasibility or solver failure.
 
-| Stage | Dependencies | Purpose |
-| --- | --- | --- |
-| Scaffold build | `ament_cmake`, `controller_interface`, `hardware_interface`, `pluginlib`, `rclcpp`, `rclcpp_lifecycle` | Build and register the inactive controller plugin |
-| Scaffold tests | `ament_cmake_gtest` | Backend rejection checks |
-| Numerical dependencies | Eigen3 and Pinocchio (linked); validated FR3 model still needed | Build-time model dependencies; model implementation remains missing |
-| Future optimizer | CasADi with IPOPT | NLP formulation, derivatives and solution |
-| Future worker/reference | `realtime_tools`, `trajectory_msgs`, threading support | Data exchange and timed reference handling |
-| Hardware integration | Compatible `franka_ros2` and `libfranka`; optionally `franka_semantic_components` | Existing driver and measured-state model access |
-| Optional extensions | HPP-FCL, vision components | Collision distances and visual feedback |
+Acceleration bounds are checked at shooting-node states. Position/velocity
+bounds are at nodes; continuous/intermediate-step safety is not guaranteed.
+Torque-rate bounds use dt and the explicitly supplied previous total torque.
+That is not a substitute for the future hardware-rate limiter or Franka's
+command-specific requirements.
 
-Eigen3 and Pinocchio are now discovered, linked and exported by CMake, with `eigen` and `pinocchio` declared in package.xml. The remaining future dependencies are not linked or declared as working features today.
-Crocoddyl and qpOASES are alternatives, not required additions to CasADi/IPOPT.
-A numeric Pinocchio backend does not automatically provide a differentiable
-CasADi graph; validate the selected symbolic/code-generation integration.
+A numerical CasADi Callback wraps Pinocchio and uses finite-difference first
+derivatives with IPOPT's limited-memory Hessian. Optional `pinocchio.casadi`
+bindings are not required. This is intentionally a correctness prototype;
+finite differences and repeated dynamics evaluations can be very slow. It does
+not claim 1 ms solves. Upgrade to validated analytic/symbolic derivatives after
+correctness and timing measurements.
 
-## Build and test on your Jazzy computer
+`max_cpu_time_s` is IPOPT's CPU budget, not a hard wall-time watchdog. Results
+record solve wall time. Use one optimizer per worker; calls are not thread-safe.
+
+**Results are offline candidates.** `valid_until_ns`, `state_time_ns` and
+`reference_id` remain zero. The future worker must assign validated timing and
+reference metadata; the controller must reject absent/expired validity.
+A result does not automatically authorize an actuator command.
+
+The constant-reference overload exists for compatibility only. It assumes a
+previous total torque equal to model gravity, so it is not an online command
+history interface. Use the explicit horizon/previous-torque overload in tracking.
+
+## Dependencies and build
+
+Required: ROS 2 Jazzy development packages, Eigen3 and Pinocchio. Optional:
+compatible C++ CasADi with its IPOPT plugin. No Crocoddyl or qpOASES is required.
 
 ```bash
 cd ~/panda_franka_robot
 source /opt/ros/jazzy/setup.bash
-colcon build --packages-select fr3_nmpc_controller --symlink-install
+colcon build --packages-select fr3_nmpc_controller --symlink-install \
+  --cmake-args \
+  -Dpinocchio_DIR=/opt/ros/jazzy/lib/x86_64-linux-gnu/cmake/pinocchio \
+  -DFR3_NMPC_WITH_CASADI=OFF
 source install/setup.bash
+```
+
+Once a compatible C++ CasADi installation is available, enable the backend with
+`-DFR3_NMPC_WITH_CASADI=ON -Dcasadi_DIR=/absolute/path/to/casadi/cmake`.
+The CMake package must export `casadi::casadi`; IPOPT must be included in that
+installation. Optional CasADi/IPOPT provisioning is external and manual, not
+installed by package.xml/colcon.
+
+Check C++ ABI compatibility. Some CasADi Python wheels export
+`_GLIBCXX_USE_CXX11_ABI=0`; do not force that into a ROS/Pinocchio stack built
+with ABI=1. Use a compatible source/distribution build. A successful Python
+import or `find_package` does not by itself establish ABI or solver compatibility.
+
+With an exported arm URDF, check numerical model consistency offline:
+
+```bash
+ros2 run fr3_nmpc_controller check_model /absolute/path/to/expanded_fr3_arm.urdf
 colcon test --packages-select fr3_nmpc_controller
 colcon test-result --verbose
 ```
 
-No robot connection is needed to build this scaffold. These commands do not
-load, activate or switch hardware controllers. The package YAML is a
-registration overlay; merge it deliberately when future integration is ready,
-without replacing the existing controller configuration. No hardware launch
-or controller-switch commands are provided.
+These commands do not require a robot connection and do not switch controllers.
+A passing gravity-hold check is internal consistency, not hardware validation.
 
-Local validation for this change: the three ROS-independent C++ sources were
-compiled and linked with a standalone rejection check; XML/YAML and local
-README links were checked. ROS 2 is unavailable in the authoring environment,
-so the complete Jazzy library/plugin build and gtest execution remain untested.
+## Hardware work still pending
 
-## Relationship to your existing project
+The actual FR3 reports effort commands and position/velocity states, with
+`fr3_arm_controller` currently claiming all seven effort interfaces. Keep it
+active during development. The plugin in this package still cannot activate.
 
-| Component | Role |
-| --- | --- |
-| `panda_reference_trajectories` | Generate Cartesian geometry and plan/time-parameterize joint motion |
-| `panda_nmpc` | Python optimizer learning and synthetic simulation |
-| `fr3_nmpc_controller` | Future C++ FR3 effort-controller integration; scaffold only today |
-| Existing `fr3_arm_controller` | Working baseline trajectory controller |
+Pending: reference subscription/time synchronization, solver thread,
+nonblocking state/result exchange, measured-latency compensation, gravity and
+payload convention checks, hardware torque/rate limits, validated failure and
+completion behavior, simulation and hardware integration tests. Do not remove
+the activation guard just because a model or solve succeeds.
 
-A `nav_msgs/Path` is geometric and cannot directly supply a timed joint MPC
-reference. Define an execution-synchronized `JointTrajectory` input. Approach
-and Cartesian segments need explicit sequencing; the existing Python bridge
-rejects multi-segment display plans. Bridge receipt is not proof of execution
-synchronization.
+The model uses TOTAL torque. Franka effort commands may exclude gravity added
+by its driver. Implement and verify that mapping against the installed driver;
+never blindly forward `total_torque` to hardware.
 
-Keep Domain 10/20 as your chosen simulation/hardware organization, but domain
-numbers do not provide actuation protection. During future NMPC trials MoveIt
-may provide a reference, while only the NMPC plugin owns arm commands. During
-baseline trials the existing trajectory controller owns them. Keep broadcasters
-for measurement in both trials.
+MoveIt supplies a timed joint reference for the NMPC experiment. A geometric
+`nav_msgs/Path` alone is insufficient. Approach and Cartesian segments need
+explicit sequencing. Baseline and NMPC trials must have a single arm-command
+owner and comparable initial conditions, payload and reference timing.
 
-## Development milestones
+## Validation evidence
 
-1. Implement and validate FR3 model quantities and integration offline.
-2. Implement NMPC with measured solve times, feasibility checks and constraints.
-3. Implement timed reference handling and bounded worker/loop data exchange.
-4. Validate command conventions, limits, lifecycle and failure behavior in a
-   compatible effort-based dynamics simulation.
-5. Implement and review the hardware command path, then follow laboratory
-   procedures for FR3 integration and controlled controller switching.
-6. Compare separate baseline/NMPC runs using the same timed reference, initial
-   condition, payload and speed. Record measured errors, commands, solver time,
-   solution age and deadline misses.
+Completed checks:
 
-There is no completed NMPC or hardware-performance claim at this stage.
+- Pinocchio 4.1.0 numerical backend compiled and linked outside ROS.
+- Synthetic seven-joint URDF loading, nonzero-configuration gravity equilibrium,
+  RK4 equilibrium, nonfinite input rejection and failed-reload invalidation passed.
+- CasADi 3.7.2 optimizer compiled with the backend both enabled and disabled.
+- Two NLP solves using a separate nonlinear test plant passed, including shifted
+  warm start, first-step torque-rate checks and NaN-reference rejection.
+- XML and README local-link checks passed.
 
-## Official references
+The Pinocchio and CasADi tests ran separately because the available binaries
+have different C++ ABIs. A combined Pinocchio/CasADi solve, ROS gtest execution,
+full Jazzy plugin build and real FR3 model/hardware remain untested. The
+synthetic test fixture is never an FR3 validation asset.
 
-- [ROS 2 Jazzy controller interface example](https://control.ros.org/jazzy/doc/api/classros2__control__demo__example__7_1_1RobotController.html)
-- [Jazzy realtime_tools](https://control.ros.org/jazzy/doc/realtime_tools/doc/index.html)
-- [Franka ROS 2 hardware documentation](https://frankarobotics.github.io/docs/doc/franka_ros2_jazzy/franka_hardware/doc/index.html)
-- [Franka ROS 2 example controllers](https://frankarobotics.github.io/docs/doc/franka_ros2_jazzy/franka_example_controllers/doc/index.html)
+## References
+
+- [Pinocchio model loading](https://github.com/stack-of-tasks/pinocchio/blob/devel/examples/overview-urdf.cpp)
+- [CasADi callbacks and differentiation](https://web.casadi.org/docs/)
+- [Franka ROS 2 hardware interfaces](https://frankarobotics.github.io/docs/doc/franka_ros2_jazzy/franka_hardware/doc/index.html)

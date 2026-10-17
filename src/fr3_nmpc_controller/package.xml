@@ -2,7 +2,7 @@
 <package format="3">
   <name>fr3_nmpc_controller</name>
   <version>0.0.1</version>
-  <description>Development scaffold for FR3 torque NMPC; hardware activation disabled.</description>
+  <description>Numerical FR3 model and optional offline NMPC backend; hardware activation disabled.</description>
   <maintainer email="ytang19@ualberta.ca">Yujie Tang</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
@@ -14,6 +14,7 @@
   <depend>pinocchio</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
+  <!-- Optional external C++ CasADi/IPOPT is provisioned manually when enabled; see README. -->
   <test_depend>ament_cmake_gtest</test_depend>
   <export><build_type>ament_cmake</build_type></export>
 </package>

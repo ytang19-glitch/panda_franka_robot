@@ -1,0 +1,16 @@
+<?xml version="1.0"?><robot name="synthetic_test_only"><link name="base"/>
+<link name="link1"><inertial><origin xyz="0 0 0.1"/><mass value="1"/><inertia ixx="0.02" iyy="0.02" izz="0.01" ixy="0" ixz="0" iyz="0"/></inertial></link>
+<joint name="fr3_joint1" type="revolute"><parent link="base"/><child link="link1"/><origin xyz="0 0 0.2"/><axis xyz="0 1 0"/><limit lower="-2" upper="2" effort="100" velocity="2"/></joint>
+<link name="link2"><inertial><origin xyz="0 0 0.1"/><mass value="1"/><inertia ixx="0.02" iyy="0.02" izz="0.01" ixy="0" ixz="0" iyz="0"/></inertial></link>
+<joint name="fr3_joint2" type="revolute"><parent link="link1"/><child link="link2"/><origin xyz="0 0 0.2"/><axis xyz="1 0 0"/><limit lower="-2" upper="2" effort="100" velocity="2"/></joint>
+<link name="link3"><inertial><origin xyz="0 0 0.1"/><mass value="1"/><inertia ixx="0.02" iyy="0.02" izz="0.01" ixy="0" ixz="0" iyz="0"/></inertial></link>
+<joint name="fr3_joint3" type="revolute"><parent link="link2"/><child link="link3"/><origin xyz="0 0 0.2"/><axis xyz="0 0 1"/><limit lower="-2" upper="2" effort="100" velocity="2"/></joint>
+<link name="link4"><inertial><origin xyz="0 0 0.1"/><mass value="1"/><inertia ixx="0.02" iyy="0.02" izz="0.01" ixy="0" ixz="0" iyz="0"/></inertial></link>
+<joint name="fr3_joint4" type="revolute"><parent link="link3"/><child link="link4"/><origin xyz="0 0 0.2"/><axis xyz="0 1 0"/><limit lower="-2" upper="2" effort="100" velocity="2"/></joint>
+<link name="link5"><inertial><origin xyz="0 0 0.1"/><mass value="1"/><inertia ixx="0.02" iyy="0.02" izz="0.01" ixy="0" ixz="0" iyz="0"/></inertial></link>
+<joint name="fr3_joint5" type="revolute"><parent link="link4"/><child link="link5"/><origin xyz="0 0 0.2"/><axis xyz="1 0 0"/><limit lower="-2" upper="2" effort="100" velocity="2"/></joint>
+<link name="link6"><inertial><origin xyz="0 0 0.1"/><mass value="1"/><inertia ixx="0.02" iyy="0.02" izz="0.01" ixy="0" ixz="0" iyz="0"/></inertial></link>
+<joint name="fr3_joint6" type="revolute"><parent link="link5"/><child link="link6"/><origin xyz="0 0 0.2"/><axis xyz="0 0 1"/><limit lower="-2" upper="2" effort="100" velocity="2"/></joint>
+<link name="link7"><inertial><origin xyz="0 0 0.1"/><mass value="1"/><inertia ixx="0.02" iyy="0.02" izz="0.01" ixy="0" ixz="0" iyz="0"/></inertial></link>
+<joint name="fr3_joint7" type="revolute"><parent link="link6"/><child link="link7"/><origin xyz="0 0 0.2"/><axis xyz="0 1 0"/><limit lower="-2" upper="2" effort="100" velocity="2"/></joint>
+</robot>
