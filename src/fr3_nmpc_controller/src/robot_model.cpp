@@ -46,6 +46,7 @@ RobotState offset(const RobotState & x, const RobotState & dx, double h)
 struct RobotModel::Impl { pinocchio::Model model; ModelLimits bounds; };
 RobotModel::RobotModel() = default;
 RobotModel::~RobotModel() = default;
+
 bool RobotModel::ready() const noexcept { return static_cast<bool>(impl_); }
 
 void RobotModel::load(const std::string & path, const std::array<double,3> & g)
