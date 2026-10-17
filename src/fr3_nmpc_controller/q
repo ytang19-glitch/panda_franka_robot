@@ -1,0 +1,12 @@
+Yujie-Ubuntu-PC:~/panda_franka_robot$ 
+yujietang@Yujie-Ubuntu-PC:~/panda_franka_robot$ pkg-config --modversion pinocchio
+Package pinocchio was not found in the pkg-config search path.
+Perhaps you should add the directory containing `pinocchio.pc'
+to the PKG_CONFIG_PATH environment variable
+Package 'pinocchio', required by 'virtual:world', not found
+yujietang@Yujie-Ubuntu-PC:~/panda_franka_robot$ pkg-config --modversion casadi
+Package casadi was not found in the pkg-config search path.
+Perhaps you should add the directory containing `casadi.pc'
+to the PKG_CONFIG_PATH environment variable
+Package 'casadi', required by 'virtual:world', not found
+yujietang@Yujie-Ubuntu-PC:~/panda_franka_robot$ 
