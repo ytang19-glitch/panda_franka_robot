@@ -1,6 +1,50 @@
 # FR3 numerical dynamics and offline torque NMPC
 
-This package now includes a numerical Pinocchio robot model and an optional
+## October 19 update: backend preflight and regression checks
+
+The four modules and their headers are updated together:
+
+- Model: `inverse_dynamics(state, ddq)` exposes RNEA total torque for a
+  nonzero-velocity forward/inverse round-trip test.
+- Optimizer: dense-vector dimension checks, reported maximum constraint
+  violation, and `max_wall_time_s` post-solve acceptance. This does not interrupt
+  an IPOPT solve or guarantee a hard real-time deadline.
+- Worker: assigns a monotonically increasing `request_id` within a worker run,
+  rejects non-finite diagnostic metadata, and preserves the highest reference
+  ID across cancellation. After cancel, use a NEW larger reference ID.
+- Controller: optional `backend_preflight` initializes the actual model,
+  optimizer and worker during configure and cleans them up in lifecycle calls.
+  No solve is submitted by preflight. It has no reference subscription or
+  real-time state/result handoff, and activation STILL returns ERROR.
+
+Preflight defaults to false. To test backend initialization in an isolated test
+manager, supply the expanded seven-joint URDF, gravity, explicit verified limits,
+and a CasADi-enabled build. Zero limit arrays in the configuration intentionally
+fail validation. Keep `0 < max_wall_time_s < max_state_age_s`; these development
+timing defaults are not established FR3 tuning. Do not stop the baseline arm
+controller to test preflight.
+
+This update is a testable backend-integration step, not a torque-control release.
+There is no hardware enable parameter. The real-time mailbox, execution-aligned
+reference input, torque convention conversion and fault policy remain pending.
+
+Build and run the model/worker tests first:
+
+```bash
+cd ~/panda_franka_robot
+source /opt/ros/jazzy/setup.bash
+source ~/franka_ros2_ws_jazzy/install/setup.bash
+colcon build --packages-select fr3_nmpc_controller --symlink-install \
+  --cmake-args -DBUILD_TESTING=ON -DFR3_NMPC_WITH_CASADI=OFF
+source install/setup.bash
+colcon test --packages-select fr3_nmpc_controller --event-handlers console_direct+
+colcon test-result --test-result-base build/fr3_nmpc_controller --verbose
+```
+
+OFF builds do not exercise the optimizer or backend preflight. When compatible
+C++ CasADi/IPOPT is available, rebuild with the option ON and rerun tests.
+
+This package includes a numerical Pinocchio robot model and an optional
 CasADi/IPOPT multiple-shooting optimizer. **It is still not a working hardware
 controller.** The ROS controller plugin continues to refuse activation, the
 background solver worker is implemented for non-real-time use, and no commands
@@ -24,7 +68,7 @@ are written to hardware.
 | [`test_unimplemented_backends.cpp`](test/test_unimplemented_backends.cpp) | Unloaded model/optimizer and unstarted worker must not produce a command |
 | [`test_solver_worker.cpp`](test/test_solver_worker.cpp) | Standalone thread scheduling, expiry, exception and lifecycle regression checks |
 | [`seven_joint_test.urdf`](test/fixtures/seven_joint_test.urdf) | Synthetic test geometry/inertia; NOT an FR3 model |
-| [`nmpc_controller.yaml`](config/nmpc_controller.yaml) | Registration overlay; only joint-order parameter is consumed by controller |
+| [`nmpc_controller.yaml`](config/nmpc_controller.yaml) | Registration overlay, joints and optional configure-only backend-preflight parameters |
 | [`fr3_nmpc_controller_plugins.xml`](fr3_nmpc_controller_plugins.xml) | Plugin discovery |
 | [`CMakeLists.txt`](CMakeLists.txt), [`package.xml`](package.xml) | Build/export/dependency metadata |
 | [`src/q`](src/q), [`command`](command) | Historical interface logs/design notes and original read-only commands |
@@ -171,7 +215,7 @@ The worker cannot verify that the submitted timestamp describes the real sensor
 measurement, or that the submitted torque reflects the real actuator history.
 
 One pending slot replaces waiting snapshots, avoiding an unbounded queue.
-New reference IDs must increase within a run. Same-reference state timestamps
+New reference IDs must increase within a run, including after cancellation. Same-reference state timestamps
 must strictly increase. A new reference or cancellation invalidates in-flight
 results through a generation counter. Reference changes reset optimizer warm
 start. A solve failure clears the exposed result. Expiry is measured from source
@@ -195,7 +239,7 @@ shutdown or a fallback controller.
 
 `start_with_solver()` exists for scheduler tests and alternate solvers. The real
 `start()` adapter uses the optimizer's convergence/constraint checks; the generic
-worker itself only checks convergence and finite first torque. It does not
+worker itself checks convergence, finite first torque and finite nonnegative diagnostic metadata. It does not
 independently validate every predicted state, constraint or hardware torque limit.
 
 ## Dependencies and build
@@ -258,6 +302,19 @@ owner and comparable initial conditions, payload and reference timing.
 
 ## Validation evidence
 
+October 19 update checks: the updated Pinocchio 4.1.0 model and check_model
+executable compiled and passed synthetic gravity equilibrium, integration hold
+and inverse/forward dynamics consistency (maximum acceleration round-trip error
+about 9.3e-15 rad/s^2). This is numerical consistency, not physical FR3 validation.
+The updated worker regression executable passed both
+normal and ASan/UBSan runs (leak detection disabled in this environment). The
+updated CasADi optimizer compiled and solved against a separate nonlinear mock
+plant; constraint reporting, warm start and deliberately tiny wall-time
+acceptance rejection passed. These isolated checks are not a combined
+Pinocchio/CasADi or ROS controller test. The full Jazzy plugin, configure-only
+preflight and real FR3 hardware still need validation on the target machine.
+
+
 Completed checks:
 
 - Pinocchio 4.1.0 numerical backend compiled and linked outside ROS.
@@ -279,3 +336,4 @@ synthetic test fixture is never an FR3 validation asset.
 - [Pinocchio model loading](https://github.com/stack-of-tasks/pinocchio/blob/devel/examples/overview-urdf.cpp)
 - [CasADi callbacks and differentiation](https://web.casadi.org/docs/)
 - [Franka ROS 2 hardware interfaces](https://frankarobotics.github.io/docs/doc/franka_ros2_jazzy/franka_hardware/doc/index.html)
+

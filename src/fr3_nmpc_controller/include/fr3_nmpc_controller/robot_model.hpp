@@ -30,6 +30,8 @@ public:
   MassMatrix mass(const JointVector & q) const;
   JointVector gravity(const JointVector & q) const;
   JointVector nonlinear_effects(const RobotState & state) const;
+  // TOTAL generalized torque M(q)*ddq+h(q,dq); not a Franka command adapter.
+  JointVector inverse_dynamics(const RobotState & state, const JointVector & acceleration) const;
   JointVector acceleration(const RobotState & state, const JointVector & total_torque) const;
   RobotState step(const RobotState & state, const JointVector & total_torque, double dt) const;
 private:
@@ -37,3 +39,4 @@ private:
   std::unique_ptr<Impl> impl_;
 };
 }  // namespace fr3_nmpc_controller
+

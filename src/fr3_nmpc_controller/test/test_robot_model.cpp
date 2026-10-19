@@ -20,3 +20,20 @@ TEST(RobotModel, GravityEquilibriumAndInvalidReload)
   EXPECT_ANY_THROW(model.load("/nonexistent_fr3_model.urdf"));
   EXPECT_FALSE(model.ready());
 }
+
+TEST(RobotModel, InverseForwardDynamicsRoundTrip)
+{
+  namespace f=fr3_nmpc_controller;
+  f::RobotModel model;
+  model.load(TEST_MODEL_URDF);
+  f::RobotState x;
+  f::JointVector ddq{};
+  for (std::size_t i=0;i<f::kJoints;++i) {
+    x.q[i]=0.05*(i+1); x.dq[i]=-0.02*(i+1); ddq[i]=0.03*(i+1);
+  }
+  const auto recovered=model.acceleration(x,model.inverse_dynamics(x,ddq));
+  for (std::size_t i=0;i<f::kJoints;++i) { EXPECT_NEAR(recovered[i],ddq[i],1e-8); }
+  ddq[0]=std::numeric_limits<double>::quiet_NaN();
+  EXPECT_THROW(model.inverse_dynamics(x,ddq),std::invalid_argument);
+}
+

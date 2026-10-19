@@ -9,7 +9,7 @@ TEST(Optimizer, FeasibleGravityHoldAndBadReference)
   auto model=std::make_shared<f::RobotModel>();
   model->load(TEST_MODEL_URDF); // Synthetic fixture only; not FR3 validation.
   f::OptimizerConfig c;
-  c.horizon=2; c.dt=.02; c.max_cpu_time_s=30;
+  c.horizon=2; c.dt=.02; c.max_cpu_time_s=30; c.max_wall_time_s=30;
   c.torque_limit.fill(100); c.torque_rate_limit.fill(1000); c.acceleration_limit.fill(100);
   f::Optimizer optimizer;
   optimizer.configure(model,c);
@@ -20,6 +20,8 @@ TEST(Optimizer, FeasibleGravityHoldAndBadReference)
     auto result=optimizer.solve(x,refs,previous);
     ASSERT_TRUE(result.has_value())<<optimizer.last_error();
     EXPECT_TRUE(result->converged);
+    EXPECT_LE(result->max_constraint_violation,c.feasibility_tolerance);
+    EXPECT_TRUE(std::isfinite(result->solve_time_ms));
     EXPECT_EQ(result->valid_until_ns,0); // Offline candidate, not hardware-authorized.
     EXPECT_EQ(result->torque_sequence.size(),c.horizon);
     for (std::size_t i=0;i<7;++i) {
@@ -32,4 +34,10 @@ TEST(Optimizer, FeasibleGravityHoldAndBadReference)
   refs[0].q[0]=std::numeric_limits<double>::quiet_NaN();
   EXPECT_FALSE(optimizer.solve(x,refs,previous).has_value());
   EXPECT_FALSE(optimizer.last_error().empty());
+  refs[0]=x;
+  c.max_wall_time_s=1e-12; // Deliberately impossible post-solve acceptance budget.
+  optimizer.configure(model,c);
+  EXPECT_FALSE(optimizer.solve(x,refs,previous).has_value());
+  EXPECT_NE(optimizer.last_error().find("wall-time"),std::string::npos);
 }
+

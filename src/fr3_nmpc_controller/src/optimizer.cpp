@@ -45,6 +45,7 @@ public:
   {
     const auto x=state(args.at(0));
     const auto values=args.at(1).nonzeros();
+    if (values.size()!=kJoints) { throw std::invalid_argument("Expected seven dense torque values"); }
     JointVector u{};
     std::copy(values.begin(),values.end(),u.begin());
     return {dm(model_->step(x,u,dt_)),dm(model_->acceleration(x,u))};
@@ -91,6 +92,7 @@ void Optimizer::configure(std::shared_ptr<const RobotModel> model,const Optimize
   if (!model || !model->ready()) { throw std::invalid_argument("Load robot model before optimizer"); }
   if (c.horizon<2 || c.horizon>100 || !std::isfinite(c.dt) || c.dt<=0 || c.dt>1 ||
       c.max_iterations<=0 || !std::isfinite(c.max_cpu_time_s) || c.max_cpu_time_s<=0 ||
+      !std::isfinite(c.max_wall_time_s) || c.max_wall_time_s<=0 ||
       !std::isfinite(c.feasibility_tolerance) || c.feasibility_tolerance<=0) {
     throw std::invalid_argument("Invalid horizon, dt, iteration budget or feasibility tolerance");
   }
@@ -194,22 +196,35 @@ std::optional<SolverResult> Optimizer::solve(const RobotState & x,
     const auto started=std::chrono::steady_clock::now();
     auto sol=p.opt.solve(); // Failure is caught; debug iterates are never commands.
     const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+    if (!std::isfinite(ms) || ms>p.cfg.max_wall_time_s*1000.0) {
+      throw std::runtime_error("Solution exceeded wall-time acceptance budget");
+    }
     const auto stats=p.opt.stats();
     if (!stats.at("success").to_bool()) { throw std::runtime_error("Solver did not report success"); }
     const DM xx=sol.value(p.X), uu=sol.value(p.U);
     // Re-evaluate ALL NLP constraints, including dynamics and rate limits.
     const auto gv=sol.value(p.opt.g()).nonzeros();
     const auto lb=sol.value(p.opt.lbg()).nonzeros(), ub=sol.value(p.opt.ubg()).nonzeros();
+    if (gv.size()!=lb.size() || gv.size()!=ub.size()) {
+      throw std::runtime_error("Constraint bound dimensions do not match");
+    }
+    double max_violation=0.0;
     for (std::size_t i=0;i<gv.size();++i) {
+      if (std::isnan(lb[i]) || std::isnan(ub[i]) || lb[i]>ub[i]) {
+        throw std::runtime_error("Invalid evaluated constraint bounds");
+      }
+      max_violation=std::max(max_violation,std::max(lb[i]-gv[i],gv[i]-ub[i]));
       if (!std::isfinite(gv[i]) || gv[i]<lb[i]-p.cfg.feasibility_tolerance || gv[i]>ub[i]+p.cfg.feasibility_tolerance) {
         throw std::runtime_error("Post-solve feasibility check failed");
       }
     }
     SolverResult result;
     result.converged=true; result.solve_time_ms=ms;
+    result.max_constraint_violation=max_violation;
     for (std::size_t k=0;k<refs.size();++k) { result.prediction.push_back(state(xx(Slice(),static_cast<int>(k)))); }
     for (std::size_t k=0;k<p.cfg.horizon;++k) {
       const auto v=DM(uu(Slice(),static_cast<int>(k))).nonzeros();
+      if (v.size()!=kJoints) { throw std::runtime_error("Invalid torque result dimensions"); }
       JointVector t{};
       for (std::size_t i=0;i<7;++i) {
         if (!std::isfinite(v[i])) { throw std::runtime_error("Non-finite optimized torque"); }
@@ -228,3 +243,4 @@ std::optional<SolverResult> Optimizer::solve(const RobotState & x,
 #endif
 }
 }  // namespace fr3_nmpc_controller
+

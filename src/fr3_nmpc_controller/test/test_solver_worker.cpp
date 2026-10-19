@@ -53,11 +53,13 @@ int main()
     require(accepted_two && accepted_three,"Replacement submit failed");
     until([&]{auto r=worker.latest();return r && r->reference_id==2;});
     auto r=worker.latest();require(r && r->total_torque[0]==3,"Newest pending request was not used");
+    require(r->request_id==3,"Worker did not assign source request sequence");
     require(r->state_time_ns==three.state_time_ns && r->valid_until_ns==three.state_time_ns+2'000'000'000,"Wrong result timestamps");
     require(!worker.submit(one),"Old reference ID accepted");
     auto bad=request(3);bad.state.q[0]=std::numeric_limits<double>::quiet_NaN();
     require(!worker.submit(bad),"NaN state accepted");
     worker.cancel_reference();require(!worker.latest(),"Canceled result visible");
+    require(!worker.submit(request(2)),"Canceled reference ID was reused");
     worker.stop();require(!worker.ready() && !worker.latest(),"Stop failed");
 
     // Result freshness must count time spent solving, starting at source state.
@@ -79,7 +81,14 @@ int main()
     require(worker.submit(request(1)),"Failure test submit rejected");
     until([&]{return worker.last_error()=="Test solver failure";});
     require(!worker.latest(),"Failed solve exposed torque");worker.stop();
+    worker.start_with_solver([](const f::SolverRequest &,bool)->std::optional<f::SolverResult>{
+      auto r=candidate(); r.solve_time_ms=std::numeric_limits<double>::quiet_NaN(); return r;
+    },2,2'000'000'000);
+    require(worker.submit(request(1)),"Metadata test submit rejected");
+    until([&]{return !worker.last_error().empty();});
+    require(!worker.latest(),"Non-finite metadata accepted");worker.stop();
     std::cout<<"Worker tests passed: lifecycle, replacement, metadata, NaN, expiry and exceptions\n";
     return 0;
   } catch(const std::exception & e) { std::cerr<<e.what()<<'\n';return 1; }
 }
+

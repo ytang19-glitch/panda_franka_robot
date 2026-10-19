@@ -13,9 +13,10 @@ namespace
 {
 using Vector = Eigen::Matrix<double, 7, 1>;
 using Matrix = Eigen::Matrix<double, 7, 7>;
-Vector vector(const JointVector & a)
+Eigen::VectorXd vector(const JointVector & a)
 {
-  Vector v;
+  // Dynamic vector matches Pinocchio's pre-instantiated numerical API.
+  Eigen::VectorXd v(kJoints);
   for (int i=0; i<7; ++i) { v[i]=a[i]; }
   if (!v.allFinite()) { throw std::invalid_argument("Non-finite model input"); }
   return v;
@@ -127,6 +128,12 @@ JointVector RobotModel::acceleration(const RobotState & x, const JointVector & t
   const Vector rhs=vector(tau)-vector(nonlinear_effects(x)); // core compute: m(q)q''=t-c(q,q')-g(q)
   return array(M.ldlt().solve(rhs)); // solve equation and get acc
 }
+JointVector RobotModel::inverse_dynamics(const RobotState & x, const JointVector & ddq) const
+{
+  if (!ready()) { throw std::logic_error("Load an FR3 URDF first"); }
+  pinocchio::Data d(impl_->model);
+  return array(pinocchio::rnea(impl_->model,d,vector(x.q),vector(x.dq),vector(ddq)));
+}
 RobotState RobotModel::step(const RobotState & x, const JointVector & tau, double dt) const
 {
   if (!std::isfinite(dt) || dt<=0) { throw std::invalid_argument("dt must be positive finite"); }
@@ -141,3 +148,4 @@ RobotState RobotModel::step(const RobotState & x, const JointVector & tau, doubl
   return y;
 }
 }  // namespace fr3_nmpc_controller
+

@@ -15,6 +15,18 @@ fr3_nmpc_controller:
       - fr3_joint5
       - fr3_joint6
       - fr3_joint7
-    # Only 'joints' is implemented today. No fake torque limits or enable flag.
-    # Add model path, horizon, weights, validated limits and timeout policy
-    # alongside their implementation, not as silently unused parameters.
+    # Optional configure-only preflight. This NEVER enables activation/motion.
+    backend_preflight: false
+    model_urdf_path: ""
+    gravity_base: [0.0, 0.0, -9.81]
+    horizon: 10
+    prediction_dt: 0.05
+    max_state_age_s: 0.1
+    max_cpu_time_s: 0.05
+    max_wall_time_s: 0.05
+    # Required for preflight: supply verified model-total torque/rate and
+    # acceleration limits. Zero defaults intentionally reject configuration.
+    total_torque_limits: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    total_torque_rate_limits: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    acceleration_limits: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+

@@ -15,6 +15,7 @@ struct SolverRequest
   JointVector previous_total_torque{};
   std::int64_t state_time_ns{0};              // steady_clock, not ROS time.
   std::uint64_t reference_id{0};             // Positive, increasing for new paths.
+  std::uint64_t request_id{0};               // Worker assigns; caller value ignored.
 };
 
 // Background prototype, not a real-time mailbox. submit/latest use mutexes and
@@ -51,9 +52,11 @@ private:
   std::size_t horizon_{0};
   std::int64_t max_age_ns_{0}, last_state_ns_{0};
   std::uint64_t reference_id_{0}, epoch_{0};
+  std::uint64_t highest_reference_id_{0}, next_request_id_{0};
   SolveFunction solve_;
   std::optional<SolverRequest> pending_;
   std::optional<SolverResult> result_;
   std::string error_;
 };
 }  // namespace fr3_nmpc_controller
+

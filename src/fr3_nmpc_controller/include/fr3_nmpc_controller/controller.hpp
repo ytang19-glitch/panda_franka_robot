@@ -9,7 +9,7 @@
 
 namespace fr3_nmpc_controller
 {
-// Loadable development scaffold. Activation always fails; no effort writes.
+// Backend-preflight plugin. Activation always fails; no effort writes.
 class Fr3NmpcController : public controller_interface::ControllerInterface
 {
 public:
@@ -17,14 +17,19 @@ public:
   controller_interface::CallbackReturn on_configure(const rclcpp_lifecycle::State &) override;
   controller_interface::CallbackReturn on_activate(const rclcpp_lifecycle::State &) override;
   controller_interface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State &) override;
+  controller_interface::CallbackReturn on_cleanup(const rclcpp_lifecycle::State &) override;
+  controller_interface::CallbackReturn on_shutdown(const rclcpp_lifecycle::State &) override;
   controller_interface::InterfaceConfiguration command_interface_configuration() const override;
   controller_interface::InterfaceConfiguration state_interface_configuration() const override;
   controller_interface::return_type update(const rclcpp::Time &, const rclcpp::Duration &) override;
 
 private:
   std::vector<std::string> joints_;
-  RobotModel model_;
-  Optimizer optimizer_;
+  // Worker owns shared optimizer; destroy/stop worker before resetting backends.
+  std::shared_ptr<RobotModel> model_;
+  std::shared_ptr<Optimizer> optimizer_;
   SolverWorker worker_;
+  void stop_backends(); // Non-real-time lifecycle only; may wait for solver.
 };
 }  // namespace fr3_nmpc_controller
+

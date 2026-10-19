@@ -48,6 +48,7 @@ void SolverWorker::start_with_solver(SolveFunction solve, std::size_t horizon, s
     solve_=std::move(solve); horizon_=horizon; max_age_ns_=max_age;
     pending_.reset(); result_.reset(); error_.clear();
     reference_id_=0; last_state_ns_=0; ++epoch_; stopping_=false;
+    highest_reference_id_=0; next_request_id_=0;
   }
   running_.store(true);
   try { thread_=std::thread(&SolverWorker::run,this); }
@@ -86,12 +87,18 @@ bool SolverWorker::submit(SolverRequest request)
     if (!finite(ref)) { error_="Non-finite reference"; return false; }
   }
   if (request.reference_id<reference_id_ ||
+      (request.reference_id!=reference_id_ && request.reference_id<=highest_reference_id_) ||
       (request.reference_id==reference_id_ && request.state_time_ns<=last_state_ns_)) {
     error_="Out-of-order reference ID or state time"; return false;
   }
   if (request.reference_id!=reference_id_) {
     ++epoch_; result_.reset(); reference_id_=request.reference_id;
+    highest_reference_id_=request.reference_id;
   }
+  if (next_request_id_==std::numeric_limits<std::uint64_t>::max()) {
+    error_="Request sequence exhausted; restart worker"; return false;
+  }
+  request.request_id=++next_request_id_;
   last_state_ns_=request.state_time_ns;
   pending_=std::move(request);
   wake_.notify_one();
@@ -129,7 +136,9 @@ void SolverWorker::run()
       try {
         candidate=solve_(request,epoch!=solved_epoch);
         solved_epoch=epoch;
-        if (!candidate || !candidate->converged || !finite(candidate->total_torque)) {
+      if (!candidate || !candidate->converged || !finite(candidate->total_torque) ||
+          !std::isfinite(candidate->solve_time_ms) || candidate->solve_time_ms<0 ||
+          !std::isfinite(candidate->max_constraint_violation) || candidate->max_constraint_violation<0) {
           candidate.reset(); error="Solver returned no converged finite torque";
         }
       } catch (const std::exception & e) { error=e.what(); solved_epoch=0; }
@@ -145,8 +154,10 @@ void SolverWorker::run()
     }
     candidate->state_time_ns=request.state_time_ns;
     candidate->reference_id=request.reference_id;
+    candidate->request_id=request.request_id;
     candidate->valid_until_ns=expiry; // Age measured from source state, NOT solve completion.
     result_=std::move(candidate); error_.clear();
   }
 }
 }  // namespace fr3_nmpc_controller
+

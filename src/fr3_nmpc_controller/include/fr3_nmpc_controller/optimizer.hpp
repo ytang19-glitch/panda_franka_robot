@@ -14,8 +14,10 @@ struct SolverResult
   // Hardware validity is NOT assigned by this offline optimizer.
   std::int64_t state_time_ns{0}, valid_until_ns{0};
   std::uint64_t reference_id{0};
+  std::uint64_t request_id{0}; // Assigned by worker, identifies the source snapshot.
   bool converged{false};
   double solve_time_ms{0.0};
+  double max_constraint_violation{0.0};
   std::vector<RobotState> prediction;
   std::vector<JointVector> torque_sequence;
 };
@@ -27,6 +29,7 @@ struct OptimizerConfig
   double terminal_weight{200.0}, feasibility_tolerance{1e-5};
   int max_iterations{100};
   double max_cpu_time_s{1.0}; // IPOPT CPU budget; not a hard wall-time deadline.
+  double max_wall_time_s{1.0}; // Post-solve acceptance budget; cannot interrupt a solve.
   // Required explicit limits; zero default arrays deliberately fail configure.
   // TOTAL modeled torques, not Franka effort commands. Rates are N*m/s.
   JointVector torque_limit{}, torque_rate_limit{}, acceleration_limit{};
@@ -53,3 +56,4 @@ private:
   std::string last_error_;
 };
 }  // namespace fr3_nmpc_controller
+
