@@ -1,5 +1,185 @@
 # FR3 numerical dynamics and offline torque NMPC
 
+## Four-terminal workflow: reference generation to real FR3 execution
+
+This is the **MoveIt baseline execution workflow**, not online NMPC torque control.
+The commands below run the generator and bridge, then use the existing
+`fr3_arm_controller` through MoveIt. The NMPC controller plugin in this package
+still refuses activation. Running these four terminals does not connect its
+optimizer to the robot.
+
+Keep all four terminals open. Use the same installed robot description and
+end-effector configuration throughout. Before Terminal 4 executes, confirm the
+previewed approach and path, clear the workspace and keep the stop button
+accessible. The robot must be in the lab-approved operating state with FCI enabled.
+Do not launch a second copy of the same hardware/MoveIt stack if one is running.
+
+| Terminal/window | Domain | Role |
+| --- | --- | --- |
+| 1 | 10 | Publish the linear Cartesian reference |
+| 2 | 10 → 20 | Bridge and rename the reference topic |
+| 3 | 20 | Start the real FR3 hardware/MoveIt/RViz stack |
+| 4 | 20 | Preview, then explicitly request real trajectory execution |
+
+### Terminal 1 — linear reference generator (Domain 10)
+
+After reboot, source the environments in this terminal:
+
+~~~bash
+source /opt/ros/jazzy/setup.bash
+source ~/franka_ros2_ws_jazzy/install/setup.bash
+source ~/panda_franka_robot/install/setup.bash
+
+export ROS_DOMAIN_ID=10
+
+ros2 run panda_reference_trajectories reference_generator --ros-args \
+  -p frame_id:=fr3_link0 \
+  -p path_topic:=/panda_reference/cartesian_path \
+  -p path_type:=linear \
+  -p orientation_x:=-0.032 \
+  -p orientation_y:=0.01 \
+  -p orientation_z:=-0.030 \
+  -p orientation_w:=0.998 \
+  -p start_x:=0.334 \
+  -p start_y:=-0.15 \
+  -p start_z:=0.25 \
+  -p goal_x:=0.334 \
+  -p goal_y:=0.044 \
+  -p goal_z:=0.25 \
+  -p step_size:=0.005
+~~~
+
+This preserves the requested quaternion in **xyzw** order. It is close to the
+identity orientation; it is not automatically a downward-facing gripper.
+The generator normalizes the quaternion. Confirm the intended TCP orientation
+in RViz before execution; do not swap quaternion components to fix it blindly.
+
+The reference is a geometric `nav_msgs/msg/Path`, republished once per second.
+Its publication timestamps are not the execution timing of a joint trajectory.
+
+### Terminal 2 — reference bridge (Domain 10 → Domain 20)
+
+~~~bash
+source /opt/ros/jazzy/setup.bash
+source ~/franka_ros2_ws_jazzy/install/setup.bash
+source ~/panda_franka_robot/install/setup.bash
+
+mkdir -p ~/panda_franka_robot/bridge_config
+
+cat > ~/panda_franka_robot/bridge_config/reference_10_to_20.yaml <<'EOF'
+name: reference_10_to_20
+from_domain: 10
+to_domain: 20
+
+topics:
+  /panda_reference/cartesian_path:
+    type: nav_msgs/msg/Path
+    remap: /fr3_reference/cartesian_path
+EOF
+
+ros2 run domain_bridge domain_bridge \
+  ~/panda_franka_robot/bridge_config/reference_10_to_20.yaml
+~~~
+
+The YAML selects both domains explicitly. The bridge remaps only the topic
+name; it does not transform coordinates or change `header.frame_id`.
+Keep only one instance of this bridge running. QoS is left to the bridge's
+publisher matching rather than forcing a potentially incompatible override.
+If the package cannot be found, source the workspace where `domain_bridge`
+was installed before running this command.
+
+### Terminal 3 — real FR3 MoveIt and RViz (Domain 20)
+
+~~~bash
+source /opt/ros/jazzy/setup.bash
+source ~/franka_ros2_ws_jazzy/install/setup.bash
+source ~/panda_franka_robot/install/setup.bash
+
+export ROS_DOMAIN_ID=20
+
+ros2 launch franka_fr3_moveit_config moveit.launch.py \
+  robot_ip:=172.16.0.2 \
+  load_gripper:=true \
+  ee_id:=franka_hand \
+  use_fake_hardware:=false \
+  fake_sensor_commands:=false
+~~~
+
+Leave this terminal running and wait for the hardware controllers and MoveIt
+to become ready. Starting this launch alone does not execute the bridged path.
+
+### Terminal 4 — inspect, preview and execute (Domain 20)
+
+~~~bash
+source /opt/ros/jazzy/setup.bash
+source ~/franka_ros2_ws_jazzy/install/setup.bash
+source ~/panda_franka_robot/install/setup.bash
+
+export ROS_DOMAIN_ID=20
+
+ros2 control list_controllers
+ros2 topic info /fr3_reference/cartesian_path --verbose
+ros2 topic echo /fr3_reference/cartesian_path --once --field header
+~~~
+
+Confirm `fr3_arm_controller` is active and that the bridged path is received
+with `frame_id: fr3_link0`. If the echo keeps waiting, check Terminals 1 and 2.
+
+First preview the approach and Cartesian path:
+
+~~~bash
+ros2 launch panda_reference_trajectories \
+  fr3_cartesian_executor.launch.py \
+  robot_ip:=172.16.0.2 \
+  load_gripper:=true \
+  ee_id:=franka_hand \
+  use_fake_hardware:=false \
+  fake_sensor_commands:=false \
+  path_topic:=/fr3_reference/cartesian_path \
+  execute:=false
+~~~
+
+After reviewing the preview, the following command **requests real robot motion**:
+
+~~~bash
+ros2 launch panda_reference_trajectories \
+  fr3_cartesian_executor.launch.py \
+  robot_ip:=172.16.0.2 \
+  load_gripper:=true \
+  ee_id:=franka_hand \
+  use_fake_hardware:=false \
+  fake_sensor_commands:=false \
+  path_topic:=/fr3_reference/cartesian_path \
+  execute:=true
+~~~
+
+The current executor launch sets `move_to_start: True`: motion includes an
+approach from the current robot state to the first path pose, followed by the
+Cartesian segment. `use_fake_hardware:=false` selects the real description;
+`execute:=true` separately enables the executor's execution request.
+`Planning-only success; NO robot motion executed` means execution was disabled.
+
+If `execute` is not listed by the following command, rebuild/source the updated
+`panda_reference_trajectories` package rather than assuming it was overridden:
+
+~~~bash
+ros2 launch panda_reference_trajectories \
+  fr3_cartesian_executor.launch.py --show-args
+~~~
+
+### Relationship to offline NMPC testing
+
+The independent `offline_tracking` experiment, when added and built locally,
+simulates model motion and writes CSV. It does not require these four terminals
+and does not publish actuator commands. A MoveIt baseline run plus a read-only
+NMPC diagnostic is not a baseline-versus-NMPC hardware comparison.
+
+Before a genuine NMPC-controlled experiment, implement and validate the
+execution-aligned timed joint reference, controller state/result handoff,
+torque convention conversion and fault behavior described below. Do not remove
+the activation guard or run competing effort controllers to connect these paths.
+
+
 ## October 19 update: backend preflight and regression checks
 
 The four modules and their headers are updated together:
