@@ -1,3 +1,7 @@
+
+#include <chrono>
+#include <iostream>
+#include <iostream>
 #include <gtest/gtest.h>
 #include <cmath>
 #include <limits>
@@ -7,17 +11,31 @@ TEST(Optimizer, FeasibleGravityHoldAndBadReference)
 {
   namespace f = fr3_nmpc_controller;
   auto model=std::make_shared<f::RobotModel>();
+  std::cerr << "[DIAG] Loading model" << std::endl;
   model->load(TEST_MODEL_URDF); // Synthetic fixture only; not FR3 validation.
   f::OptimizerConfig c;
   c.horizon=2; c.dt=.02; c.max_cpu_time_s=30; c.max_wall_time_s=30;
   c.torque_limit.fill(100); c.torque_rate_limit.fill(1000); c.acceleration_limit.fill(100);
   f::Optimizer optimizer;
+  std::cerr << "[DIAG] Configuring optimizer" << std::endl;
   optimizer.configure(model,c);
-  f::RobotState x;
+  std::cerr << "[DIAG] Configuration finished" << std::endl;
+  f::RobotState x{}; ,
   std::vector<f::RobotState> refs(c.horizon+1,x);
   auto previous=model->gravity(x.q);
   for (int k=0;k<2;++k) {
+    std::cerr << "[DIAG] Solve " << k << " starting" << std::endl;
+    const auto solve_started = std::chrono::steady_clock::now();
     auto result=optimizer.solve(x,refs,previous);
+    const double elapsed_s = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - solve_started).count();
+    std::cerr << "[TIMING] solve=" << k
+              << " seconds=" << elapsed_s
+              << " success=" << result.has_value()
+              << " error=" << optimizer.last_error()
+              << std::endl;
+    std::cerr << "[DIAG] Solve returned: "
+              << optimizer.last_error() << std::endl;
     ASSERT_TRUE(result.has_value())<<optimizer.last_error();
     EXPECT_TRUE(result->converged);
     EXPECT_LE(result->max_constraint_violation,c.feasibility_tolerance);
@@ -36,7 +54,9 @@ TEST(Optimizer, FeasibleGravityHoldAndBadReference)
   EXPECT_FALSE(optimizer.last_error().empty());
   refs[0]=x;
   c.max_wall_time_s=1e-12; // Deliberately impossible post-solve acceptance budget.
+  std::cerr << "[DIAG] Configuring optimizer" << std::endl;
   optimizer.configure(model,c);
+  std::cerr << "[DIAG] Configuration finished" << std::endl;
   EXPECT_FALSE(optimizer.solve(x,refs,previous).has_value());
   EXPECT_NE(optimizer.last_error().find("wall-time"),std::string::npos);
 }
