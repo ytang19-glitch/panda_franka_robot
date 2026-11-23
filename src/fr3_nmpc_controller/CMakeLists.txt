@@ -7,6 +7,7 @@ find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(sensor_msgs REQUIRED)
 # Numerical model backend: loading a URDF does not establish hardware validity.
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 find_package(pinocchio REQUIRED)
@@ -51,6 +52,16 @@ if(FR3_NMPC_WITH_CASADI)
   target_compile_definitions(${PROJECT_NAME} PRIVATE FR3_NMPC_WITH_CASADI)
   target_link_libraries(${PROJECT_NAME} casadi::casadi)
   ament_export_dependencies(casadi)
+endif()
+
+# Standalone read-only NMPC diagnostic; never claims effort interfaces.
+# The optimizer is usable only when FR3_NMPC_WITH_CASADI=ON.
+if(FR3_NMPC_WITH_CASADI)
+  add_executable(gazebo_nmpc_diagnostic src/gazebo_nmpc_diagnostic.cpp)
+  target_compile_features(gazebo_nmpc_diagnostic PRIVATE cxx_std_17)
+  target_link_libraries(gazebo_nmpc_diagnostic ${PROJECT_NAME})
+  ament_target_dependencies(gazebo_nmpc_diagnostic rclcpp sensor_msgs)
+  install(TARGETS gazebo_nmpc_diagnostic DESTINATION lib/${PROJECT_NAME})
 endif()
 
 add_executable(check_model examples/check_model.cpp)
