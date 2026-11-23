@@ -23,6 +23,7 @@ add_library(${PROJECT_NAME} SHARED
   src/robot_model.cpp
   src/optimizer.cpp
   src/solver_worker.cpp
+  src/torque_adapter.cpp
   src/controller.cpp
 )
 
@@ -94,6 +95,11 @@ install(FILES README.md
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_torque_adapter test/test_torque_adapter.cpp)
+  if(TARGET test_torque_adapter)
+    target_link_libraries(test_torque_adapter ${PROJECT_NAME})
+  endif()
 
   ament_add_gtest(test_unimplemented_backends
     test/test_unimplemented_backends.cpp
