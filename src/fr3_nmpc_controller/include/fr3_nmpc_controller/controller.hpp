@@ -1,4 +1,5 @@
 #pragma once
+
 #include <string>
 #include <vector>
 #include "controller_interface/controller_interface.hpp"
@@ -23,13 +24,29 @@ public:
   controller_interface::InterfaceConfiguration state_interface_configuration() const override;
   controller_interface::return_type update(const rclcpp::Time &, const rclcpp::Duration &) override;
 
+
 private:
+
+  // FR3 joint names
   std::vector<std::string> joints_;
-  // Worker owns shared optimizer; destroy/stop worker before resetting backends.
+
+  // Robot dynamics model
   std::shared_ptr<RobotModel> model_;
+
+  // CasADi/IPOPT optimizer
   std::shared_ptr<Optimizer> optimizer_;
+
+  // Background solver
   SolverWorker worker_;
-  void stop_backends(); // Non-real-time lifecycle only; may wait for solver.
+
+  // Validate measured joint positions and velocities
+  bool validate_joint_state(
+      const RobotState & state) const noexcept;
+
+  // Stop optimization backends
+  void stop_backends();
 };
-}  // namespace fr3_nmpc_controller
+
+}
+ // namespace fr3_nmpc_controller
 

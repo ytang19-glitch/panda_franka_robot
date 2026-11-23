@@ -134,11 +134,46 @@ controller_interface::CallbackReturn Fr3NmpcController::on_shutdown(const rclcpp
 {
   stop_backends(); return controller_interface::CallbackReturn::SUCCESS;
 }
-controller_interface::return_type Fr3NmpcController::update(const rclcpp::Time &,const rclcpp::Duration &)
-{
-  // No mutexes, allocations, solver calls or effort writes in the disabled path.
-  return controller_interface::return_type::ERROR;
-}
-}
-PLUGINLIB_EXPORT_CLASS(fr3_nmpc_controller::Fr3NmpcController,controller_interface::ControllerInterface)
 
+// ============================================================
+// Controller Update
+// ============================================================
+
+controller_interface::return_type
+Fr3NmpcController::update(
+    const rclcpp::Time &,
+    const rclcpp::Duration &)
+{
+    // NMPC torque control is not activated yet.
+    // No actuator commands are written.
+
+    return controller_interface::return_type::ERROR;
+}
+
+
+// ============================================================
+// Validate Gazebo Joint States
+// ============================================================
+
+bool Fr3NmpcController::validate_joint_state(
+    const RobotState & state) const noexcept
+{
+    for (std::size_t i = 0; i < kJoints; ++i)
+    {
+        // Check joint positions and velocities
+        if (!std::isfinite(state.q[i]) ||
+            !std::isfinite(state.dq[i]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+} // namespace fr3_nmpc_controller
+
+
+PLUGINLIB_EXPORT_CLASS(
+    fr3_nmpc_controller::Fr3NmpcController,
+    controller_interface::ControllerInterface)

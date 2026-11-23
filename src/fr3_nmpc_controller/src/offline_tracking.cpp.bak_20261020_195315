@@ -1,0 +1,684 @@
+#include "fr3_nmpc_controller/optimizer.hpp"
+#include "fr3_nmpc_controller/robot_model.hpp"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace fc = fr3_nmpc_controller;
+
+namespace
+{
+
+fc::RobotState reference_at(
+  double time,
+  const fc::RobotState & initial,
+  double amplitude,
+  double duration)
+{
+  fc::RobotState reference = initial;
+
+  const double s = std::clamp(time / duration, 0.0, 1.0);
+  const double s2 = s * s;
+  const double s3 = s2 * s;
+  const double s4 = s3 * s;
+  const double s5 = s4 * s;
+
+  // Quintic position profile with zero endpoint velocity/acceleration.
+  const double scale = 10.0 * s3 - 15.0 * s4 + 6.0 * s5;
+  const double scale_dot =
+    (30.0 * s2 - 60.0 * s3 + 30.0 * s4) / duration;
+
+  reference.q[0] += amplitude * scale;
+  reference.dq[0] = amplitude * scale_dot;
+
+  return reference;
+}
+
+void check_state(
+  const fc::RobotState & state,
+  const fc::ModelLimits & limits)
+{
+  for (std::size_t j = 0; j < fc::kJoints; ++j) {
+    if (!std::isfinite(state.q[j]) ||
+        !std::isfinite(state.dq[j]))
+    {
+      throw std::runtime_error("Non-finite simulated state");
+    }
+
+    if (state.q[j] < limits.lower[j] ||
+        state.q[j] > limits.upper[j] ||
+        std::abs(state.dq[j]) > limits.velocity[j])
+    {
+      throw std::runtime_error(
+        "Simulated state exceeds limits at joint " +
+        std::to_string(j + 1));
+    }
+  }
+}
+
+void check_torque(
+  const fc::JointVector & torque,
+  const fc::JointVector & previous,
+  const fc::OptimizerConfig & config)
+{
+  for (std::size_t j = 0; j < fc::kJoints; ++j) {
+    const double tolerance = config.feasibility_tolerance;
+
+    if (!std::isfinite(torque[j]) ||
+        std::abs(torque[j]) > config.torque_limit[j] + tolerance)
+    {
+      throw std::runtime_error("Invalid optimized total torque");
+    }
+
+    const double maximum_change =
+      config.torque_rate_limit[j] * config.dt;
+
+    if (std::abs(torque[j] - previous[j]) >
+        maximum_change + tolerance)
+    {
+      throw std::runtime_error("Optimized torque-rate limit exceeded");
+    }
+  }
+}
+
+void write_header(std::ofstream & csv)
+{
+  csv << "time_s,solve_ms,max_constraint_violation";
+
+  for (std::size_t j = 1; j <= fc::kJoints; ++j) {
+    csv << ",q_ref_" << j
+        << ",q_" << j
+        << ",dq_ref_" << j
+        << ",dq_" << j
+        << ",error_" << j
+        << ",tau_" << j;
+  }
+
+  csv << '\n';
+}
+
+void write_sample(
+  std::ofstream & csv,
+  double time,
+  double solve_ms,
+  double violation,
+  const fc::RobotState & reference,
+  const fc::RobotState & state,
+  const fc::JointVector & torque)
+{
+  csv << time << ',' << solve_ms << ',' << violation;
+
+  for (std::size_t j = 0; j < fc::kJoints; ++j) {
+    csv << ',' << reference.q[j]
+        << ',' << state.q[j]
+        << ',' << reference.dq[j]
+        << ',' << state.dq[j]
+        << ',' << reference.q[j] - state.q[j]
+        << ',' << torque[j];
+  }
+
+  csv << '\n';
+  csv.flush();
+}
+
+}  // namespace
+
+int main(int argc, char ** argv)
+{
+  if (argc != 4) {
+    std::cerr
+      << "Usage:\n"
+      << "  offline_tracking MODEL.urdf OUTPUT.csv hold|move\n";
+    return 1;
+  }
+
+  try {
+    const std::string mode = argv[3];
+
+    if (mode != "hold" && mode != "move") {
+      throw std::invalid_argument("Mode must be hold or move");
+    }
+
+    auto model = std::make_shared<fc::RobotModel>();
+    model->load(argv[1]);
+
+    const auto limits = model->limits();
+
+    // Offline initial configuration, not a hardware command.
+    fc::RobotState initial{};
+    for (std::size_t j = 0; j < fc::kJoints; ++j) {
+      initial.q[j] =
+        0.5 * (limits.lower[j] + limits.upper[j]);
+    }
+
+    check_state(initial, limits);
+
+    fc::OptimizerConfig config;
+    config.horizon = 2;
+    config.dt = 0.02;
+    config.max_iterations = 100;
+    config.max_cpu_time_s = 5.0;
+    config.max_wall_time_s = 10.0;
+
+    for (std::size_t j = 0; j < fc::kJoints; ++j) {
+      config.torque_limit[j] = limits.effort[j];
+
+      // Illustrative offline limits; not hardware-approved settings.
+      config.torque_rate_limit[j] = 200.0;
+      config.acceleration_limit[j] = 2.0;
+    }
+
+    constexpr double duration = 1.0;
+
+    // Begin with a small motion after hold mode succeeds.
+    const double amplitude = mode == "hold" ? 0.0 : std::min({
+      0.002,
+      0.1 * (limits.upper[0] - limits.lower[0]),
+      limits.velocity[0] * duration / 4.0
+    });
+
+    const std::size_t steps =
+      static_cast<std::size_t>(
+        std::lround(duration / config.dt));
+
+    fc::RobotState state = initial;
+    fc::JointVector previous_torque = model->gravity(initial.q);
+
+    check_torque(previous_torque, previous_torque, config);
+
+    // Check gravity equilibrium before invoking the optimizer.
+    const auto hold_acceleration =
+      model->acceleration(initial, previous_torque);
+
+    double maximum_hold_acceleration = 0.0;
+    for (double value : hold_acceleration) {
+      if (!std::isfinite(value)) {
+        throw std::runtime_error("Non-finite gravity-hold acceleration");
+      }
+
+      maximum_hold_acceleration =
+        std::max(maximum_hold_acceleration, std::abs(value));
+    }
+
+    std::cout
+      << "OFFLINE MODEL SIMULATION: no robot commands\n"
+      << "Mode: " << mode << '\n'
+      << "Steps: " << steps << '\n'
+      << "Prediction dt: " << config.dt << " s\n"
+      << "Joint-1 reference displacement: " << amplitude << " rad\n"
+      << "Maximum gravity-hold acceleration: "
+      << maximum_hold_acceleration << " rad/s^2\n";
+
+    if (maximum_hold_acceleration > 1e-8) {
+      throw std::runtime_error(
+        "Model gravity-equilibrium check failed");
+    }
+
+    fc::Optimizer optimizer;
+    optimizer.configure(model, config);
+
+    const std::filesystem::path output_path(argv[2]);
+
+    if (output_path.has_parent_path()) {
+      std::filesystem::create_directories(
+        output_path.parent_path());
+    }
+
+    std::ofstream csv(output_path);
+    if (!csv) {
+      throw std::runtime_error("Cannot open output CSV");
+    }
+
+    csv.exceptions(std::ios::failbit | std::ios::badbit);
+    csv << std::setprecision(17);
+    write_header(csv);
+
+    double squared_error_sum = 0.0;
+    double maximum_error = 0.0;
+    double total_solve_ms = 0.0;
+    double maximum_solve_ms = 0.0;
+
+    for (std::size_t k = 0; k < steps; ++k) {
+      const double time =
+        static_cast<double>(k) * config.dt;
+
+      std::vector<fc::RobotState> references;
+      references.reserve(config.horizon + 1);
+
+      for (std::size_t h = 0; h <= config.horizon; ++h) {
+        references.push_back(reference_at(
+          time + static_cast<double>(h) * config.dt,
+          initial, amplitude, duration));
+      }
+
+      std::cout << "[SOLVE] step=" << k << std::endl;
+
+      const auto started = std::chrono::steady_clock::now();
+
+      const auto result =
+        optimizer.solve(state, references, previous_torque);
+
+      const double solve_ms =
+        std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - started).count();
+
+      if (!result || !result->converged) {
+        throw std::runtime_error(
+          "Solve failed at step " + std::to_string(k) +
+          " after " + std::to_string(solve_ms) +
+          " ms: " + optimizer.last_error());
+      }
+
+      if (!std::isfinite(result->max_constraint_violation) ||
+          result->max_constraint_violation >
+            config.feasibility_tolerance)
+      {
+        throw std::runtime_error(
+          "Unacceptable post-solve constraint violation");
+      }
+
+      const auto torque = result->total_torque;
+      check_torque(torque, previous_torque, config);
+
+      // State and reference both correspond to the beginning of this step.
+      write_sample(
+        csv, time, solve_ms,
+        result->max_constraint_violation,
+        references.front(), state, torque);
+
+      for (std::size_t j = 0; j < fc::kJoints; ++j) {
+        const double error =
+          references.front().q[j] - state.q[j];#include "fr3_nmpc_controller/optimizer.hpp"
+#include "fr3_nmpc_controller/robot_model.hpp"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace fc = fr3_nmpc_controller;
+
+// Smooth quintic motion: zero velocity and acceleration at both ends.
+fc::RobotState reference_at(
+  double time,
+  const fc::RobotState & initial,
+  double amplitude,
+  double duration)
+{
+  fc::RobotState reference = initial;
+
+  const double s = std::clamp(time / duration, 0.0, 1.0);
+  const double s2 = s * s;
+  const double s3 = s2 * s;
+  const double s4 = s3 * s;
+  const double s5 = s4 * s;
+
+  const double position_scale = 10.0 * s3 - 15.0 * s4 + 6.0 * s5;
+  const double velocity_scale =
+    (30.0 * s2 - 60.0 * s3 + 30.0 * s4) / duration;
+
+  reference.q[0] += amplitude * position_scale;
+  reference.dq[0] = amplitude * velocity_scale;
+
+  return reference;
+}
+
+void check_state(
+  const fc::RobotState & state,
+  const fc::ModelLimits & limits)
+{
+  for (std::size_t j = 0; j < fc::kJoints; ++j) {
+    if (!std::isfinite(state.q[j]) || !std::isfinite(state.dq[j])) {
+      throw std::runtime_error("Simulation produced non-finite state");
+    }
+
+    if (state.q[j] < limits.lower[j] ||
+        state.q[j] > limits.upper[j] ||
+        std::abs(state.dq[j]) > limits.velocity[j])
+    {
+      throw std::runtime_error("Simulated state exceeded URDF limits");
+    }
+  }
+}
+
+int main(int argc, char ** argv)
+{
+  if (argc != 3) {
+    std::cerr
+      << "Usage: offline_tracking MODEL.urdf OUTPUT.csv\n";
+    return 1;
+  }
+
+  try {
+    // 1. Load a fixed-base model with exactly seven movable arm joints.
+    auto model = std::make_shared<fc::RobotModel>();
+    model->load(argv[1]);
+
+    const auto limits = model->limits();
+
+    // Offline initial state: joint-limit midpoint, zero velocity.
+    // This is not a measured hardware pose or a collision-validated pose.
+    fc::RobotState initial{};
+    for (std::size_t j = 0; j < fc::kJoints; ++j) {
+      initial.q[j] = 0.5 * (limits.lower[j] + limits.upper[j]);
+    }
+
+    check_state(initial, INE MODEL SIMULATION: no robot commands
+Steps: 50, prediction dt: 0.02 s
+Offline experiment stopped: Solve failed at step 0: Error in Opti::solve [OptiNode] at .../casadi/core/optistack.cpp:217:
+.../casadi/core/optistack_internal.cpp:1340: Assertion "return_success(accept_limit)" failed:
+Solver failed. You may use opti.debug.value to investigate the latest values of variables. return_status is 'Maximum_Iterations_Exceeded'
+Any existing CSV contains partial results only.
+[ros2run]: Process exited with failure 1
+limits);
+
+    // 2. Configure a small initial NMPC problem.
+    fc::OptimizerConfig config;
+    config.horizon = 2;
+    config.dt = 0.02;
+    config.max_iterations = 100;
+
+    // Offline acceptance budgets, not real-time guarantees.
+    config.max_cpu_time_s = 5.0;
+    config.max_wall_time_s = 10.0;
+
+    for (std::size_t j = 0; j < fc::kJoints; ++j) {
+      config.torque_limit[j] = limits.effort[j];
+
+      // Illustrative offline settings, not hardware-approved limits.
+      config.torque_rate_limit[j] = 200.0;  // N*m/s
+      config.acceleration_limit[j] = 2.0;   // rad/s^2
+    }
+
+    fc::Optimizer optimizer;
+    optimizer.configure(model, config);
+
+    fc::RobotState state = initial;
+    fc::JointVector previous_torque = model->gravity(initial.q);
+
+    for (std::size_t j = 0; j < fc::kJoints; ++j) {
+      if (std::abs(previous_torque[j]) > config.torque_limit[j]) {
+        throw std::runtime_error(
+          "Gravity-hold torque exceeds configured torque limit");
+      }
+    }
+
+    // 3. Define a small, smooth joint-1 motion.
+    
+     // Diagnostic experiment: gravity hold, no reference motion.
+    const double amplitude = 0.0;
+    
+ 
+    const std::size_t steps =
+      static_cast<std::size_t>(std::lround(duration / config.dt));
+
+    // 4. Open output CSV.
+    const std::filesystem::path output_path(argv[2]);
+
+    if (output_path.has_pINE MODEL SIMULATION: no robot commands
+Steps: 50, prediction dt: 0.02 s
+Offline experiment stopped: Solve failed at step 0: Error in Opti::solve [OptiNode] at .../casadi/core/optistack.cpp:217:
+.../casadi/core/optistack_internal.cpp:1340: Assertion "return_success(accept_limit)" failed:
+Solver failed. You may use opti.debug.value to investigate the latest values of variables. return_status is 'Maximum_Iterations_Exceeded'
+Any existing CSV contains partial results only.
+[ros2run]: Process exited with failure 1
+arent_path()) {
+      std::filesystem::create_directories(output_path.parent_path());
+    }
+
+    std::ofstream csv(output_path);
+    if (!csv) {
+      throw std::runtime_error("Cannot open output CSV");
+    }
+
+    csv.exceptions(std::ios::failbit | std::ios::badbit);
+    csv << std::setprecision(17);
+
+    csv << "time_s,solve_ms,max_constraint_violation";
+
+    for (std::size_t j = 1; j <= fc::kJoints; ++j) {
+      csv << ",q_ref_" << j
+          << ",q_" << j
+          << ",dq_ref_" << j
+          << ",dq_" << j
+          << ",error_" << j
+          << ",tau_" << jINE MODEL SIMULATION: no robot commands
+Steps: 50, prediction dt: 0.02 s
+Offline experiment stopped: Solve failed at step 0: Error in Opti::solve [OptiNode] at .../casadi/core/optistack.cpp:217:
+.../casadi/core/optistack_internal.cpp:1340: Assertion "return_success(accept_limit)" failed:
+Solver failed. You may use opti.debug.value to investigate the latest values of variables. return_status is 'Maximum_Iterations_Exceeded'
+Any existing CSV contains partial results only.
+[ros2run]: Process exited with failure 1
+;
+    }
+    csv << '\n';
+
+    std::cout
+      << "OFFLINE MODEL SIMULATION: no robot commands\n"
+      << "Steps: " << steps
+      << ", prediction dtINE MODEL SIMULATION: no robot commands
+Steps: 50, prediction dt: 0.02 s
+Offline experiment stopped: Solve failed at step 0: Error in Opti::solve [OptiNode] at .../casadi/core/optistack.cpp:217:
+.../casadi/core/optistack_internal.cpp:1340: Assertion "return_success(accept_limit)" failed:
+Solver failed. You may use opti.debug.value to investigate the latest values of variables. return_status is 'Maximum_Iterations_Exceeded'
+Any existing CSV contains partial results only.
+[ros2run]: Process exited with failure 1
+: " << config.dt << " s\n";
+
+    double squared_error_sum = 0.0;
+    double max_abs_error = 0.0;
+    double solve_time_sum_ms = 0.0;
+    double max_solve_ms = 0.0;
+
+    // 5. Receding-horizon closed-loop simulation.
+    for (std::size_t k = 0; k < steps; ++k) {
+      const double t = static_cast<double>(k) * config.dt;
+
+      std::vector<fc::RobotState> references;
+      references.reserve(config.horizon + 1);
+
+      for (std::size_t h = 0; h <= config.horizon; ++h) {
+        references.push_back(reference_at(
+          t + static_cast<double>(h) * config.dt,
+          initial, amplitude, duration));
+      }
+
+      const auto start = std::chrono::steady_clock::now();
+
+      auto result = optimizer.solve(
+        state, references, previous_torque);
+
+      const double solve_ms =
+        std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - start).count();
+
+      if (!result || !result->converged) {
+        throw std::runtime_error(
+          "Solve failed at step " + std::to_string(k) +
+          ": " + optimizer.last_error());
+      }
+
+      if (!std::isfinite(result->max_constraint_violation) ||
+          result->max_constraint_violation > config.feasibility_tolerance)
+      {
+        throw std::runtime_error("Unacceptable constraint violation");
+      }
+
+      const auto torque = result->total_torque;
+
+      // Check the first optimized input before applying it to the model.
+      for (std::size_t j = 0; j < fc::kJoints; ++j) {
+        if (!std::isfinite(torque[j]) ||
+            std::abs(torque[j]) >
+              config.torque_limit[j] + config.feasibility_tolerance ||
+            std::abs(torque[j] - previous_torque[j]) >
+              config.torque_rate_limit[j] * config.dt +
+              config.feasibility_tolerance)
+        {
+          throw std::runtime_error("Invalid optimized torque");
+        }
+      }
+
+      // Log state at t and the input applied over [t, t+dt].
+      csv << t << ',' << solve_ms << ','
+          << result->max_constraint_violation;
+
+      for (std::size_t j = 0; j < fc::kJoints; ++j) {
+        const double error = references.front().q[j] - state.q[j];
+
+        squared_error_sum += error * error;
+        max_abs_error = std::max(max_abs_error, std::abs(error));
+
+        csv << ',' << references.front().q[j]
+            << ',' << state.q[j]
+            << ',' << references.front().dq[j]
+            << ',' << state.dq[j]
+            << ',' << error
+            << ',' << torque[j];
+      }
+
+      csv << '\n';
+      csv.flush();
+
+      // Apply only the first optimized torque.
+      // Smaller integration steps reduce numerical integration error.
+      constexpr int substeps = 10;
+
+      for (int substep = 0; substep < substeps; ++substep) {
+        state = model->step(state, torque, config.dt / substeps);
+        check_state(state, limits);
+      }
+
+      previous_torque = torque;
+
+      solve_time_sum_ms += solve_ms;
+      max_solve_ms = std::max(max_solve_ms, solve_ms);
+
+      std::cout
+        << "step=" << k
+        << " t=" << t
+        << " solve=" << solve_ms << " ms"
+        << " joint1_error="
+        << reference_at(t + config.dt, initial, amplitude, duration).q[0]
+           - state.q[0]
+        << " rad (after integration)\n";
+    }
+
+    const double rmse = std::sqrt(
+      squared_error_sum /
+      static_cast<double>(steps * fc::kJoints));
+
+    const auto final_reference =
+      reference_at(duration, initial, amplitude, duration);
+
+    double final_error_squared = 0.0;
+    for (std::size_t j = 0; j < fc::kJoints; ++j) {
+      const double error = final_reference.q[j] - state.q[j];
+      final_error_squared += error * error;
+    }
+
+    std::cout
+      << "\nCompleted offline simulation\n"
+      << "Joint-angle RMSE over logged samples: " << rmse << " rad\n"
+      << "Maximum absolute logged error: " << max_abs_error << " rad\n"
+      << "Final joint-error norm: "
+      << std::sqrt(final_error_squared) << " rad\n"
+      << "Mean solve time: " << solve_time_sum_ms / steps << " ms\n"
+      << "Maximum solve time: " << max_solve_ms << " ms\n"
+      << "CSV: " << output_path << '\n';
+
+    return 0;
+  } catch (const std::exception & error) {
+    std::cerr
+      << "Offline experiment stopped: " << error.what() << '\n'
+      << "Any existing CSV contains partial results only.\n";
+    return 1;
+  }
+}
+
+
+        squared_error_sum += error * error;
+        maximum_error =
+          std::max(maximum_error, std::abs(error));
+      }
+
+      // Apply the first optimized torque to the simulated model.
+      constexpr int substeps = 10;
+
+      for (int substep = 0; substep < substeps; ++substep) {
+        state = model->step(
+          state, torque, config.dt / substeps);
+
+        check_state(state, limits);
+      }
+
+      previous_torque = torque;
+
+      total_solve_ms += solve_ms;
+      maximum_solve_ms =
+        std::max(maximum_solve_ms, solve_ms);
+
+      const auto next_reference = reference_at(
+        time + config.dt, initial, amplitude, duration);
+
+      std::cout
+        << "[RESULT] step=" << k
+        << " next_time=" << time + config.dt
+        << " solve_ms=" << solve_ms
+        << " joint1_error_rad="
+        << next_reference.q[0] - state.q[0]
+        << std::endl;
+    }
+
+    const double rmse = std::sqrt(
+      squared_error_sum /
+      static_cast<double>(steps * fc::kJoints));
+
+    const auto final_reference =
+      reference_at(duration, initial, amplitude, duration);
+
+    double final_error_squared = 0.0;
+    for (std::size_t j = 0; j < fc::kJoints; ++j) {
+      const double error =
+        final_reference.q[j] - state.q[j];
+
+      final_error_squared += error * error;
+    }
+
+    std::cout
+      << "\nCompleted offline simulation\n"
+      << "Logged joint-angle RMSE: " << rmse << " rad\n"
+      << "Maximum logged absolute error: "
+      << maximum_error << " rad\n"
+      << "Final joint-error norm: "
+      << std::sqrt(final_error_squared) << " rad\n"
+      << "Mean solve time: "
+      << total_solve_ms / static_cast<double>(steps) << " ms\n"
+      << "Maximum solve time: " << maximum_solve_ms << " ms\n"
+      << "CSV: " << output_path << '\n';
+
+    return 0;
+  } catch (const std::exception & error) {
+    std::cerr
+      << "Offline experiment stopped: " << error.what() << '\n'
+      << "Any existing output CSV may contain partial results only.\n";
+
+    return 1;
+  }
+}

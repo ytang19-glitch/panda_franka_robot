@@ -14,6 +14,16 @@ struct ModelLimits
 {
   JointVector lower{}, upper{}, velocity{}, effort{};
 };
+// Dense column-major Jacobians. x=[q;dq], u=total generalized torque.
+struct DynamicsLinearization
+{
+  RobotState next_state{};
+  JointVector acceleration{};
+  std::array<double, 14 * 14> step_dx{};
+  std::array<double, 14 * 7> step_du{};
+  std::array<double, 7 * 14> acceleration_dx{};
+  std::array<double, 7 * 7> acceleration_du{};
+};
 // Numerical offline backend. Methods allocate workspace: not a hard-RT API.
 // Load only before solving; do not call load() concurrently with model users.
 class RobotModel
@@ -34,9 +44,12 @@ public:
   JointVector inverse_dynamics(const RobotState & state, const JointVector & acceleration) const;
   JointVector acceleration(const RobotState & state, const JointVector & total_torque) const;
   RobotState step(const RobotState & state, const JointVector & total_torque, double dt) const;
+  // Exact first derivatives of the same RK4 map used by step().
+  // RNEA derivatives + implicit dynamics differentiation + RK4 chain rule.
+  DynamicsLinearization linearize_step(
+    const RobotState & state, const JointVector & total_torque, double dt) const;
 private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
 }  // namespace fr3_nmpc_controller
-
