@@ -1,0 +1,14 @@
+reference_tracker:
+  ros__parameters:
+    use_sim_time: false
+    planning_group: fr3_arm
+    tcp_link: fr3_hand_tcp
+    path_topic: /fr3_reference/cartesian_path
+    execute: false
+    move_to_start: true
+    keep_current_orientation: false
+    avoid_collisions: true
+    minimum_fraction: 1.0
+    eef_step: 0.005
+    velocity_scaling: 0.1
+    acceleration_scaling: 0.1
