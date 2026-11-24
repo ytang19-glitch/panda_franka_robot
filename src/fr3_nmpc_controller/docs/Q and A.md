@@ -2,9 +2,22 @@
 
 Before you start integrating the components, you should be able to answer these three questions.
 
-## Q1: Why can't IPOPT be called directly inside `controller.update()`?
+## Q1: How can we prevent missed control deadlines when NMPC optimization is slow?
 
-The solver may take longer than the control period, causing the control thread to miss its deadline.
+**Run NMPC optimization in the background while keeping `controller.update()` fast and nonblocking.**
+
+For example, a 1 kHz controller has a 1 ms control period. If IPOPT takes 20 ms and runs directly inside `update()`, the callback cannot finish within that period.
+
+In the proposed integration design:
+
+- **SolverWorker** runs IPOPT in a background thread.
+- **Coordinator** prepares requests and calls worker functions that may lock or allocate memory, outside the real-time control thread.
+- **Two SPSC queues** provide bounded transfer of robot states to the coordinator and torque candidates back to the controller.
+- **Controller** continues each cycle: read the robot state, publish a snapshot, check an available torque candidate, and apply an acceptable command or use the defined fallback control. It never waits for a solve to finish.
+
+If a queue is full or empty, the controller follows its defined nonblocking policy instead of waiting. It checks a candidate's source-state age, reference version, validity, and torque limits before use. A previously accepted command may be reused only within its allowed validity window and control policy; otherwise, fallback control is required.
+
+**Two timing requirements remain:** the controller must finish within its control period, and the solver must return useful results before they expire. Background optimization prevents solver execution from blocking `update()`; it does not by itself guarantee hard real-time behavior or make an outdated result usable.
 
 ## Q2: Why are two SPSC queues needed?
 
