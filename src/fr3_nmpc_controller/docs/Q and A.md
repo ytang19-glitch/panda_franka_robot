@@ -1,26 +1,36 @@
-接下来最重要的三个问题
-在你开始集成之前，应该能回答：
+# Key Questions Before Integration
 
-Q1：为什么不能直接在 controller.update() 中调用 IPOPT？
+Before you start integrating the components, you should be able to answer these three questions.
 
-因为求解时间可能超过控制周期，导致控制线程错过截止时间。
+## Q1: Why can't IPOPT be called directly inside `controller.update()`?
 
-Q2：为什么需要两个 SPSC Queue？
+The solver may take longer than the control period, causing the control thread to miss its deadline.
 
-因为状态与力矩命令沿相反方向传输，每个方向有独立的生产者与消费者。
+## Q2: Why are two SPSC queues needed?
 
-Q3：为什么不能直接执行队列中的每一个 TorqueCommand？
+Robot states and torque commands travel in opposite directions. Each direction has its own producer and consumer, so each needs a separate single-producer, single-consumer (SPSC) queue.
 
-因为旧命令可能对应过去的机器人状态。控制器需要检查求解结果的时间戳、参考版本、有效性以及力矩限制。
-你现在的具体任务
-先运行 test_realtime_exchange，确保数据交换模块正确。
+## Q3: Why can't the controller simply execute every `TorqueCommand` in the queue?
 
-完成后，我们进入下一课：
-Lesson 8 — Integrate RealtimeExchange into Fr3NmpcController
-届时我们会具体修改：
+An old command may have been computed from a past robot state. Before applying a solver result, the controller needs to check:
 
-controller.hpp → 声明交换模块与线程状态。
+- Its timestamp.
+- Its reference version.
+- Its validity.
+- Whether the torque satisfies the limits.
 
-controller.cpp → 实现状态发布、协调线程、结果读取和验证。
+## Your Next Task
 
-SolverWorker → 保留原有后台优化职责。
+Run `test_realtime_exchange` first to verify that the data exchange module works correctly.
+
+## Next Lesson
+
+**Lesson 8 — Integrate RealtimeExchange into Fr3NmpcController**
+
+After the test passes, the next lesson will cover these changes:
+
+| Component | Changes |
+| --- | --- |
+| `controller.hpp` | Declare the exchange module and thread state. |
+| `controller.cpp` | Implement state publishing, thread coordination, and result retrieval and validation. |
+| `SolverWorker` | Keep its existing responsibility for background optimization. |
