@@ -37,6 +37,7 @@
 
   <depend>rclcpp</depend>
   <depend>geometry_msgs</depend>
+  <depend>shape_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>trajectory_msgs</depend>
   <depend>moveit_msgs</depend>

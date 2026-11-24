@@ -45,3 +45,7 @@ For FR3 Gazebo or hardware, start the matching official robot description, MoveI
 - The weighted IK selector and candidate graph optimizer are implemented as independent helpers but NOT wired into the tracker. Generate pose-valid IK candidate layers, use a synchronized planning scene, supply hard state/edge validity checks, then integrate the optimizer. Smoothness and collision costs are not yet used by this solver; Jacobian scaling must be defined.
 - Timing validation does not establish collision safety. Retimed path collision, Cartesian accuracy, clearance, joint limits and continuity need independent verification before any future execution/export. The baseline preview can deviate from the exact path during retiming.
 - Build and runtime have not been tested against ROS 2 Jazzy. Verify in Gazebo first. The same algorithms can be reused with FR3 profiles, not the Panda SRDF or controller config.
+
+## Collision-cost experiment
+
+See [GAZEBO_COLLISION_COST_GUIDE.md](GAZEBO_COLLISION_COST_GUIDE.md) for the numerical unit test and read-only MoveIt scene experiment. The new test uses a local virtual box sweep and exports measured clearance/cost to CSV; the original planner and execution interfaces remain unchanged.

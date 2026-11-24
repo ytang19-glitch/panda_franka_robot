@@ -49,4 +49,24 @@ ament_target_dependencies(reference_tracker rclcpp geometry_msgs nav_msgs trajec
 install(TARGETS reference_tracker DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 
+find_package(shape_msgs REQUIRED)
+add_executable(collision_cost_test
+  test/integration/test_moveit_collision_cost.cpp
+  src/planning_scene/collision_distance.cpp
+  src/cost_functions/collision_cost.cpp)
+target_compile_features(collision_cost_test PUBLIC cxx_std_17)
+target_include_directories(collision_cost_test PRIVATE include)
+target_link_libraries(collision_cost_test Eigen3::Eigen Threads::Threads)
+ament_target_dependencies(collision_cost_test rclcpp moveit_core moveit_msgs geometry_msgs shape_msgs moveit_ros_planning_interface)
+install(TARGETS collision_cost_test DESTINATION lib/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+  add_executable(test_collision_cost test/unit/test_collision_cost.cpp src/cost_functions/collision_cost.cpp)
+  target_compile_features(test_collision_cost PUBLIC cxx_std_17)
+  target_include_directories(test_collision_cost PRIVATE include)
+  target_link_libraries(test_collision_cost Eigen3::Eigen)
+  add_test(NAME collision_cost_unit COMMAND test_collision_cost)
+  install(TARGETS test_collision_cost DESTINATION lib/${PROJECT_NAME})
+endif()
+
 ament_package()

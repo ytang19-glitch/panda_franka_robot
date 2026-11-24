@@ -1,0 +1,12 @@
+collision_cost_test:
+  ros__parameters:
+    planning_group: arm
+    base_frame: panda_link0
+    obstacle_id: collision_cost_probe
+    box_size: [0.10, 0.10, 0.10]
+    # Sweep a virtual box along world/model X relative to the selected link origin.
+    probe_link: panda_hand
+    offsets: [0.50, 0.30, 0.20, 0.15, 0.10, 0.05, 0.0]
+    desired_clearance: 0.10
+    collision_weight: 100.0
+    csv_path: /tmp/panda_collision_cost.csv
