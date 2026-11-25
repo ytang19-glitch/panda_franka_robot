@@ -13,6 +13,10 @@ This module evaluates the quality of candidate joint configurations and trajecto
 
 The public interfaces are declared in [cost_functions.hpp](../../include/panda_moveit/cost_functions.hpp).
 
+## Part A — General-purpose cost functions
+
+Reusable costs for robot motion quality. The four C++ evaluators below are implemented. Joint-limit margin and explicit IK branch-continuity costs are proposed extensions.
+
 ## 2. Joint cost
 
 $$J_q=(q-q_{\mathrm{ref}})^T W(q-q_{\mathrm{ref}})=\sum_{i=1}^{7}w_i(q_i-q_{\mathrm{ref},i})^2$$
@@ -118,6 +122,30 @@ $J_{\mathrm{sm}}(A)=0.3^2+(-0.3)^2=0.18,\qquad J_{\mathrm{sm}}(B)=0$
 
 Candidate B has uniform joint increments. These hypothetical paths share joint endpoints but are not verified to follow the same Cartesian path. The penalty is geometric; it does not by itself enforce acceleration limits.
 
+## Part B — Industry-specific cost functions (proposed)
+
+These objectives encode process requirements for robotic welding, surfacing and deburring. They are proposed extensions, not existing C++ implementations.
+
+| Cost | Example objective | Application |
+| --- | --- | --- |
+| Torch angle | $J_\theta=(\theta-\theta_{\rm ref})^2$ | Maintain required work/travel angle |
+| Tool standoff | $J_h=(h-h_{\rm ref})^2$ | Maintain tool-to-surface distance |
+| Clamp clearance | $J_c=\max(0,d_{\rm safe}-d_{\rm clamp})^2$ | Apply fixture-specific clearance margins using the general collision evaluator |
+| Wrist configuration | $J_w=\max(0,\alpha_{\min}-\alpha(q))^2$ | Avoid undesirable robot-specific wrist configurations |
+| TCP speed | $J_v=(\|\dot p_{\rm TCP}\|-v_{\rm ref})^2$ | Maintain processing speed on timed processing segments |
+| Surface tracking | $J_p=\|p_{\rm TCP}-p_{\rm ref}\|^2$ | Follow required workpiece path |
+| Contact force | $J_F=(F_n-F_{\rm ref})^2$ | Maintain desired normal force during contact processing |
+
+### Industrial example: robotic weld overlay
+
+The planner should preserve torch orientation, standoff, travel speed and fixture clearance while selecting continuous, well-conditioned joint configurations.
+
+For an illustrative torch-angle target of 15 degrees, candidates at 25 and 17 degrees have squared angular errors of approximately 0.03046 and 0.00122 rad squared, respectively. These are hypothetical values, not prescribed process parameters.
+
+Wrist configuration margins must be derived for the actual robot geometry and joint convention. A six-axis industrial wrist rule must not be copied directly to Panda/FR3. TCP speed requires a timed trajectory; contact force requires a contact model or force feedback and generally belongs in the process controller or NMPC layer.
+
+## Part C — Integration and validation
+
 ## 6. Combined optimization objective
 
 A proposed full-path objective is:
@@ -125,6 +153,8 @@ A proposed full-path objective is:
 $$J_{\mathrm{total}}(Q)=\sum_{k=0}^{N}\left(\lambda_q J_q(q_k)+\lambda_s J_s(q_k)+\lambda_c J_c(q_k)\right)+\lambda_{\mathrm{sm}}J_{\mathrm{sm}}(Q)$$
 
 $$Q^*=\arg\min_Q J_{\mathrm{total}}(Q)$$
+
+For industrial applications, the proposed objective becomes $J_{\rm task}=J_{\rm total}+\sum_i \mu_i J_{{\rm industry},i}$, with nonnegative weights and appropriate normalization. Mandatory process tolerances and safety requirements must remain constraints.
 
 The optimizer must preserve the required TCP position/orientation, joint limits, collision-free motion and other application constraints. Normalize terms or tune nonnegative weights to account for their different numerical scales.
 
