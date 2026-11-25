@@ -53,3 +53,41 @@ See [GAZEBO_COLLISION_COST_GUIDE.md](GAZEBO_COLLISION_COST_GUIDE.md) for the num
 ## Application profiles
 
 See [GAZEBO_APPLICATION_GUIDE.md](GAZEBO_APPLICATION_GUIDE.md). Select `application:=baseline`, `welding`, `deburring`, `polishing`, `clamp_avoidance` or `pick_and_place` separately from the robot profile. The four terms are evaluated and logged; `cost_csv_path` optionally exports them. These presets are scoring-only and illustrative. A synthetic graph unit test checks that a supplied cost can change the independent optimizer's selection.
+
+
+## Industrial surfacing: problem-to-solution roadmap
+
+See [cost function mathematics and robot figures](src/cost_functions/README.md).
+
+| Industrial problem | Proposed objective / constraint | Current implementation |
+|---|---|---|
+| Wrist singularity | Robot-specific wrist margin; for a suitable spherical wrist, enforce absolute J5 >= required margin | General Jacobian score only; dedicated wrist constraint pending |
+| Shoulder singularity | Minimum scaled Jacobian singular value and robot-specific geometry checks | General singularity evaluator implemented; hard threshold pending |
+| Elbow singularity | Minimum scaled Jacobian singular value and robot-specific geometry checks | General singularity evaluator implemented; hard threshold pending |
+| Poor manipulability / high condition number | Maximize minimum singular value; optionally report manipulability and condition number | Minimum singular value cost implemented; separate metrics pending |
+| Insufficient joint limit margin | Normalized distance from joint bounds; enforce physical bounds | Weighted reference displacement exists, but is not a joint-limit margin cost |
+| Insufficient collision clearance | Clearance hinge cost plus hard state and edge collision checks | World clearance scoring exists; optimized-path validation pending |
+| Torch angle deviation | Rotation error cost within approved process tolerance | Dedicated orientation cost and tolerance sampling pending |
+
+### Proposed optimization formulation
+
+For candidate configurations at each TCP waypoint, minimize
+
+$$\sum_k \left(w_s C_s(q_k)+w_c C_c(q_k)+w_l C_l(q_k)+w_o C_o(q_k)+w_w C_w(q_k)\right)+\sum_{k>0}\|q_k-q_{k-1}\|_W^2.$$
+
+The existing singularity objective is $C_s=1/(\sigma_{\min}^2+\epsilon)$, evaluated on a consistently scaled Jacobian. The existing candidate graph solver minimizes additive state and transition costs over supplied candidate layers, not over all continuous configurations. The other terms above are proposed extensions. A fixed exact TCP orientation makes orientation cost constant across exact IK branches; sample allowed orientation variations only when the manufacturing process permits them.
+
+### Integration sequence
+
+1. Generate multiple pose-valid IK candidates for every waypoint, using multiple seeds or a compatible IK plugin. Reject invalid states using the synchronized planning scene.
+2. Evaluate scaled Jacobian singular values, robot-specific margins, joint bounds, clearance and torch pose. Reject states violating mandatory thresholds instead of merely penalizing them.
+3. Supply the remaining candidates and additive state scores to the existing dynamic-programming helper in [trajectory_optimizer.cpp](src/optimization/trajectory_optimizer.cpp). Validate each transition for collisions, singularity margins, joint continuity and Cartesian path deviation; reject unreachable layers.
+4. Time-parameterize the selected sequence and independently validate the resulting interpolated path, joint velocity/acceleration limits and required TCP process speed. TOTG alone does not guarantee constant welding speed.
+5. Compare baseline and optimized plans in Gazebo before any supervised hardware dry run. Keep execution disabled until robot-specific safety checks and controller integration are established.
+
+### Baseline versus optimized validation
+
+Use identical start states, toolpaths, scene geometry and process tolerances. Record minimum scaled singular value, maximum condition number, minimum joint-limit margin, minimum environmental and self clearance, maximum torch angular error, maximum joint velocity, TCP speed error, planning time and successful path completion. Report infeasible cases instead of relaxing mandatory constraints.
+
+**Robot portability:** the J5-near-zero criterion is specific to appropriate six-axis spherical-wrist robots and must not be assumed for Panda/FR3. Use the actual robot model, calibrated TCP and fixtures, and separately validated thresholds. MoveIt is a planning backend, not a safety-rated controller. No real-robot feasibility or singularity avoidance is claimed by this roadmap.
+
