@@ -279,12 +279,24 @@ int main(int argc, char ** argv)
       param<double>(node,"joint_cost_weight",1.0),
       param<double>(node,"singularity_cost_weight",0.0),
       param<double>(node,"collision_cost_weight",0.0),
-      param<double>(node,"smoothness_cost_weight",0.0)};
+      param<double>(node,"smoothness_cost_weight",0.0),
+      param<double>(node,"joint_limit_cost_weight",0.0),
+      param<double>(node,"orientation_cost_weight",0.0),
+      param<double>(node,"wrist_cost_weight",0.0)};
     const double safe=param<double>(node,"desired_clearance",0.10);
     const double length=param<double>(node,"characteristic_length",0.30);
     const double sigma_scale=param<double>(node,"singularity_scale",0.10);
     const double step_scale=param<double>(node,"joint_step_scale",0.10);
     const auto csv=param<std::string>(node,"cost_csv_path","");
+    const double joint_margin=param<double>(node,"desired_joint_margin",0.20);
+    const double orientation_scale=param<double>(node,"orientation_scale",0.0872664626);
+    const bool margin_mode=param<bool>(node,"singularity_margin_mode",false);
+    const double desired_sigma=param<double>(node,"desired_sigma",0.10);
+    const auto wrist_name=param<std::string>(node,"wrist_joint_name","");
+    const double wrist_desired=param<double>(node,"wrist_desired_angle",0.3490658504);
+    const bool wrist_positive=param<bool>(node,"wrist_positive_branch",true);
+    for(double s:{joint_margin,orientation_scale,desired_sigma,wrist_desired})
+      if(!std::isfinite(s)||s<=0) throw std::runtime_error("Invalid surfacing scale");
     for(double scale:{safe,length,sigma_scale,step_scale})
       if(!std::isfinite(scale)||scale<=0) throw std::runtime_error("Cost scales must be positive");
     const auto& jt=cartesian_trajectory.joint_trajectory;
@@ -315,7 +327,38 @@ int main(int argc, char ** argv)
     if(snapshot.is_diff) throw std::runtime_error("Expected a full planning scene");
     scene.setPlanningSceneMsg(snapshot);
     moveit::core::RobotState state(scene.getCurrentState());
-    double singularity=0, clearance=0;
+    double singularity=0, clearance=0, joint_limit=0, orientation=0, wrist=0;
+    double min_sigma=std::numeric_limits<double>::infinity();
+    double min_margin=std::numeric_limits<double>::infinity();
+    double min_manip=std::numeric_limits<double>::infinity(), max_condition=0, max_orientation=0;
+    // For constant nominal orientation only; varying-orientation paths require
+    // an explicit reference correspondence after retiming.
+    const auto& nominal=waypoints.front().orientation;
+    const Eigen::Quaterniond desired(nominal.w,nominal.x,nominal.y,nominal.z);
+    if(coefficients[5]>0) {
+      if(!scene.knowsFrameTransform(path.header.frame_id))
+        throw std::runtime_error("Unknown orientation reference frame");
+      for(const auto& p:waypoints) {
+        const Eigen::Quaterniond r(p.orientation.w,p.orientation.x,p.orientation.y,p.orientation.z);
+        if(panda_moveit::orientationError(r,desired)>1e-6)
+          throw std::runtime_error("Orientation scoring currently requires constant nominal orientation");
+      }
+    }
+    if(coefficients[6]>0 && (wrist_name.empty() ||
+       std::find(jt.joint_names.begin(),jt.joint_names.end(),wrist_name)==jt.joint_names.end() ||
+       model->getName().find("panda")!=std::string::npos || model->getName().find("fr3")!=std::string::npos))
+      throw std::runtime_error("Wrist policy requires verified non-Panda/FR3 robot and joint name");
+    Eigen::Quaterniond desired_global=desired;
+    if(coefficients[5]>0)
+      desired_global=Eigen::Quaterniond(scene.getFrameTransform(path.header.frame_id).linear())*desired;
+    std::vector<std::string> bounded;
+    for(const auto& name:jt.joint_names)
+      if(model->getVariableBounds(name).position_bounded_) bounded.push_back(name);
+    Eigen::VectorXd lo(bounded.size()), hi(bounded.size()), values(bounded.size());
+    for(size_t i=0;i<bounded.size();++i) {
+      const auto& bounds=model->getVariableBounds(bounded[i]);
+      lo[i]=bounds.min_position_; hi[i]=bounds.max_position_;
+    }
     double min_distance=std::numeric_limits<double>::infinity();
     size_t invalid_samples=0;
     for(const auto& point:jt.points) {
@@ -326,7 +369,25 @@ int main(int argc, char ** argv)
         throw std::runtime_error("Cannot compute TCP Jacobian");
       // Convert angular rows to a comparable translational scale.
       jac.bottomRows(3)*=length;
-      singularity+=panda_moveit::singularityCost(jac)*sigma_scale*sigma_scale;
+      const auto metrics=panda_moveit::jacobianMetrics(jac);
+      min_sigma=std::min(min_sigma,metrics.sigma_min);
+      min_manip=std::min(min_manip,metrics.manipulability);
+      max_condition=std::max(max_condition,metrics.condition_number);
+      singularity+=margin_mode?panda_moveit::singularityMarginCost(metrics.sigma_min,desired_sigma):
+        sigma_scale*sigma_scale/(metrics.sigma_min*metrics.sigma_min+1e-6);
+      for(size_t i=0;i<bounded.size();++i){
+        values[i]=state.getVariablePosition(bounded[i]);
+        min_margin=std::min(min_margin,std::min(values[i]-lo[i],hi[i]-values[i]));
+      }
+      if(!bounded.empty()) joint_limit+=panda_moveit::jointLimitCost(values,lo,hi,joint_margin)/bounded.size();
+      if(coefficients[5]>0){
+        const Eigen::Quaterniond actual(state.getGlobalLinkTransform(link).linear());
+        const double error=panda_moveit::orientationError(actual,desired_global);
+        max_orientation=std::max(max_orientation,error);
+        orientation+=error*error/(orientation_scale*orientation_scale);
+      }
+      if(coefficients[6]>0)
+        wrist+=panda_moveit::wristSingularityCost(state.getVariablePosition(wrist_name),wrist_desired,wrist_positive);
       const auto measured=panda_moveit::measureClearance(scene,state);
       if(measured.colliding||!state.satisfiesBounds()) ++invalid_samples;
       min_distance=std::min(min_distance,measured.distance);
@@ -337,16 +398,22 @@ int main(int argc, char ** argv)
       movement/((n-1)*step_scale*step_scale),
       singularity/n,
       clearance/n,
-      panda_moveit::smoothnessCost(path_matrix)/(std::max(1.0,n-2)*step_scale*step_scale)};
+      panda_moveit::smoothnessCost(path_matrix)/(std::max(1.0,n-2)*step_scale*step_scale),
+      joint_limit/n,orientation/n,wrist/n};
     const double total=panda_moveit::combinedCost(terms,coefficients);
     RCLCPP_INFO(node->get_logger(),"Application %s (SCORING ONLY)",application.c_str());
     RCLCPP_INFO(node->get_logger(),"Normalized terms: joint=%.8f singularity=%.8f clearance=%.8f smoothness=%.8f",terms[0],terms[1],terms[2],terms[3]);
     RCLCPP_INFO(node->get_logger(),"Weights: %.3f %.3f %.3f %.3f; total=%.8f; min_world_clearance=%.6g m; invalid_samples=%zu",coefficients[0],coefficients[1],coefficients[2],coefficients[3],total,min_distance,invalid_samples);
+    RCLCPP_INFO(node->get_logger(),"Surfacing terms: joint_margin=%.8f orientation=%.8f wrist=%.8f",terms[4],terms[5],terms[6]);
+    RCLCPP_INFO(node->get_logger(),"Metrics: min_sigma=%.8g min_manipulability=%.8g max_condition=%.8g min_joint_margin=%.8g rad",min_sigma,min_manip,max_condition,min_margin);
+    if(coefficients[5]>0) RCLCPP_INFO(node->get_logger(),"Max nominal orientation error: %.8g rad",max_orientation);
     if(!csv.empty()) {
       std::ofstream out(csv);
       if(!out) throw std::runtime_error("Cannot open cost CSV");
-      out<<std::setprecision(16)<<"application,joint,singularity,clearance,smoothness,total,min_world_clearance_m,invalid_samples\n"
-         <<application<<","<<terms[0]<<","<<terms[1]<<","<<terms[2]<<","<<terms[3]<<","<<total<<","<<min_distance<<","<<invalid_samples<<"\n";
+      out<<std::setprecision(16)<<"application,joint,singularity,clearance,smoothness,total,min_world_clearance_m,invalid_samples,joint_margin,orientation,wrist,min_sigma,min_manipulability,max_condition,min_joint_margin_rad,max_orientation_error_rad\n"
+         <<application<<","<<terms[0]<<","<<terms[1]<<","<<terms[2]<<","<<terms[3]<<","<<total<<","<<min_distance<<","<<invalid_samples<<","<<terms[4]<<","<<terms[5]<<","<<terms[6]<<","<<min_sigma<<","<<min_manip<<","<<max_condition<<","<<min_margin<<",";
+      if(coefficients[5]>0) out<<max_orientation;
+      out<<"\n";
       out.flush();
       if(!out) throw std::runtime_error("Cannot write cost CSV");
     }

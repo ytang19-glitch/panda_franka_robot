@@ -1,0 +1,13 @@
+# Experimental scoring preset; not calibrated or a hardware safety policy.
+reference_tracker:
+  ros__parameters:
+    application_name: surfacing
+    joint_cost_weight: 5.0
+    singularity_cost_weight: 10.0
+    collision_cost_weight: 10.0
+    smoothness_cost_weight: 3.0
+    joint_limit_cost_weight: 5.0
+    orientation_cost_weight: 10.0
+    wrist_cost_weight: 0.0
+    singularity_margin_mode: true
+    # J5 restriction intentionally disabled for Panda/FR3.

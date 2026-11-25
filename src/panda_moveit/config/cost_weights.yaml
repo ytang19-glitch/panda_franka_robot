@@ -1,4 +1,4 @@
-# Defaults; application YAML overrides the four scalar weights.
+# Defaults; application YAML overrides the scalar weights.
 reference_tracker:
   ros__parameters:
     joint_weights: [1.0, 1.0, 10.0, 10.0, 1.0, 1.0, 1.0]
@@ -10,3 +10,13 @@ reference_tracker:
     characteristic_length: 0.30
     singularity_scale: 0.10
     joint_step_scale: 0.10
+    joint_limit_cost_weight: 0.0
+    orientation_cost_weight: 0.0
+    wrist_cost_weight: 0.0
+    desired_joint_margin: 0.20
+    orientation_scale: 0.0872664626
+    singularity_margin_mode: false
+    desired_sigma: 0.10
+    wrist_joint_name: ""
+    wrist_desired_angle: 0.3490658504
+    wrist_positive_branch: true

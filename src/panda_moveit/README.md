@@ -91,3 +91,7 @@ Use identical start states, toolpaths, scene geometry and process tolerances. Re
 
 **Robot portability:** the J5-near-zero criterion is specific to appropriate six-axis spherical-wrist robots and must not be assumed for Panda/FR3. Use the actual robot model, calibrated TCP and fixtures, and separately validated thresholds. MoveIt is a planning backend, not a safety-rated controller. No real-robot feasibility or singularity avoidance is claimed by this roadmap.
 
+
+## Industrial surfacing costs
+
+The surfacing application adds joint-limit margin and constant nominal torch orientation scoring, a threshold-based singularity cost and manipulability/condition-number diagnostics. Optional J5 scoring stays disabled for Panda/FR3. See [cost function documentation](src/cost_functions/README.md). Run `ros2 run panda_moveit test_surfacing_cost` after building with testing enabled. Select `application:=surfacing` for planning-only evaluation. No live optimization or new hard process constraints are enabled.

@@ -12,7 +12,7 @@ def setup(context):
     if profile not in ("panda_gazebo", "fr3_gazebo", "fr3_real"):
         raise RuntimeError("Unknown robot profile")
     application = LaunchConfiguration("application").perform(context)
-    if application not in ("baseline", "welding", "deburring", "polishing", "clamp_avoidance", "pick_and_place"):
+    if application not in ("baseline", "welding", "deburring", "polishing", "clamp_avoidance", "pick_and_place", "surfacing"):
         raise RuntimeError("Unknown application")
     share = get_package_share_directory("panda_moveit")
     return [Node(package="panda_moveit", executable="reference_tracker",

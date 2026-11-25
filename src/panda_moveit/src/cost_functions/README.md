@@ -158,3 +158,19 @@ Before simulated execution, check joint limits, collisions (including interpolat
 The current implementations reject nonfinite inputs. Joint cost also rejects mismatched dimensions and negative weights; singularity cost rejects empty Jacobians and nonpositive epsilon; collision cost rejects negative safe clearance. Invalid inputs raise std::invalid_argument.
 
 **Key distinction:** A lower objective is not proof of feasibility or safety. Cost evaluation, optimization, trajectory validation and real-time control are separate responsibilities.
+
+## 10. Industrial surfacing extension
+
+| Issue | Implementation | Metric or penalty |
+|---|---|---|
+| Wrist, shoulder and elbow singularities | singularity_cost.cpp | scaled Jacobian minimum singular value; optional normalized shortfall |
+| Poor manipulability / condition number | manipulability_cost.cpp | product of task-space singular values; max/min ratio (diagnostics) |
+| Joint limits | joint_limit_cost.cpp | squared normalized margin shortfall for bounded joints |
+| Clamp clearance | collision_cost.cpp | existing clearance hinge |
+| Torch angle | orientation_cost.cpp | quaternion geodesic angle squared |
+| J5 near zero | wrist_singularity_cost.cpp | optional positive-branch or absolute-angle margin |
+| Configuration changes | joint_cost.cpp / smoothness_cost.cpp | existing motion and second differences |
+
+The seven-term combined score retains the original four entries, adding joint margin, nominal orientation and optional wrist costs. Manipulability and condition number are diagnostics to avoid double-counting singularity costs. The wrist rule is disabled in surfacing.yaml and is not a valid general Panda/FR3 singularity criterion. No separate shoulder/elbow formula is assumed without a verified robot model. Orientation scoring currently supports constant nominal orientation only, with the reference frame transformed into the model frame. Use a calibrated torch TCP, not an arbitrary flange. The score remains post-planning; live optimization and hard process constraints are not implemented.
+
+Build with BUILD_TESTING=ON and run `ros2 run panda_moveit test_surfacing_cost`. With existing Gazebo, MoveIt and reference generator running, use `ros2 launch panda_moveit reference_tracking.launch.py profile:=panda_gazebo application:=surfacing cost_csv_path:=/tmp/surfacing.csv`. Inspect metrics and CSV. This is a preview-only diagnostic and not a hardware safety validation.
