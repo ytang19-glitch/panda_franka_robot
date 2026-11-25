@@ -23,6 +23,23 @@ For sequential IK, the previous accepted configuration can serve as the referenc
 
 Example weights: [1, 1, 10, 10, 1, 1, 1]. Joints 3 and 4 receive larger penalties for the same deviation. The current [cost_weights.yaml](../../config/cost_weights.yaml) contains these joint weights; a consuming node must load and use them.
 
+### Robot example: why joint weights matter
+
+![Seven-joint robot illustrating a high-weight joint 3 and low-weight joint 6](joint_cost_example.svg)
+
+*Illustrative seven-joint arm. The highlighted joints show which coordinate changes from the reference; the drawings are not forward-kinematics renderings.*
+
+Assume all other joint deviations are zero and use the configured weights $w_3=10$ and $w_6=1$.
+
+| Candidate | Joint deviation | Weight | Joint cost |
+| --- | --- | ---: | ---: |
+| A | Joint 3 moves 0.20 rad | 10 | 0.40 |
+| B | Joint 6 moves 0.20 rad | 1 | 0.04 |
+
+$J_q(A)=10(0.2)^2=0.40,\qquad J_q(B)=1(0.2)^2=0.04$
+
+Candidate B receives a ten-times smaller joint penalty despite the same angular deviation. In practice, the optimizer may prefer motion in lower-weight joints when it can still achieve the required TCP pose. These hypothetical vectors illustrate the cost calculation only; they are not verified IK solutions for the same pose. Feasibility, collision checking and other objectives must also be considered.
+
 ## 3. Singularity cost
 
 $$J_s=\frac{1}{\sigma_{\min}(J(q))^2+\epsilon}$$
