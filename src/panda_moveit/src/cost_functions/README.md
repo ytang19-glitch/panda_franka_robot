@@ -80,29 +80,9 @@ The four functions are implemented as independent evaluators. This combined obje
 
 ## 7. Relationship with MoveIt and NMPC
 
-<pre>
- Cartesian reference + MoveIt planning scene
-                     |
-           Initial IK / joint path
-                     |
-                     v
-       +-----------------------------+
-       |     Custom optimizer        |
-       |                             |
-       | Joint       Singularity     |
-       | Collision   Smoothness      |
-       +-----------------------------+
-                     |
-          Trajectory validation
-                     |
-          Time parameterization
-                     |
-           Timed joint reference
-                     |
-         Joint controller / NMPC
-                     |
-              Gazebo / FR3
-</pre>
+![Cost-aware robotic motion planning: robot configurations, cost curves and trajectory processing](cost_functions_overview.svg)
+
+*Figure 1. Conceptual robot configurations, four cost objectives and trajectory processing. Curves and geometry are illustrative, not experimental results.*
 
 The cost functions score solutions. The optimizer searches for better solutions. MoveIt state validity checks reject invalid solutions. The controller tracks the resulting timed reference.
 
