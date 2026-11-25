@@ -35,6 +35,8 @@ find_package(Threads REQUIRED)
 add_executable(reference_tracker
   src/reference_tracker.cpp
   src/cost_functions/joint_cost.cpp
+  src/cost_functions/application_cost.cpp
+  src/planning_scene/collision_distance.cpp
   src/cost_functions/singularity_cost.cpp
   src/cost_functions/collision_cost.cpp
   src/cost_functions/smoothness_cost.cpp
@@ -67,6 +69,17 @@ if(BUILD_TESTING)
   target_link_libraries(test_collision_cost Eigen3::Eigen)
   add_test(NAME collision_cost_unit COMMAND test_collision_cost)
   install(TARGETS test_collision_cost DESTINATION lib/${PROJECT_NAME})
+endif()
+
+if(BUILD_TESTING)
+  add_executable(test_application_cost test/unit/test_application_cost.cpp
+    src/cost_functions/application_cost.cpp src/cost_functions/joint_cost.cpp
+    src/optimization/trajectory_optimizer.cpp)
+  target_compile_features(test_application_cost PUBLIC cxx_std_17)
+  target_include_directories(test_application_cost PRIVATE include)
+  target_link_libraries(test_application_cost Eigen3::Eigen)
+  add_test(NAME application_cost_unit COMMAND test_application_cost)
+  install(TARGETS test_application_cost DESTINATION lib/${PROJECT_NAME})
 endif()
 
 ament_package()

@@ -1,0 +1,8 @@
+# Illustrative scoring preset, not tuned or a safety guarantee.
+reference_tracker:
+  ros__parameters:
+    application_name: polishing
+    joint_cost_weight: 2.0
+    singularity_cost_weight: 3.0
+    collision_cost_weight: 5.0
+    smoothness_cost_weight: 10.0

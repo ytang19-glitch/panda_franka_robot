@@ -1,3 +1,12 @@
+# Defaults; application YAML overrides the four scalar weights.
 reference_tracker:
   ros__parameters:
     joint_weights: [1.0, 1.0, 10.0, 10.0, 1.0, 1.0, 1.0]
+    joint_cost_weight: 1.0
+    singularity_cost_weight: 1.0
+    collision_cost_weight: 1.0
+    smoothness_cost_weight: 1.0
+    desired_clearance: 0.10
+    characteristic_length: 0.30
+    singularity_scale: 0.10
+    joint_step_scale: 0.10

@@ -1,5 +1,14 @@
 #include "panda_moveit/reference_tracker.hpp"
 #include "panda_moveit/cost_functions.hpp"
+#include "panda_moveit/application_cost.hpp"
+#include "panda_moveit/collision_distance.hpp"
+#include <moveit_msgs/srv/get_planning_scene.hpp>
+#include <moveit_msgs/msg/planning_scene_components.hpp>
+#include <future>
+#include <algorithm>
+#include <limits>
+#include <fstream>
+#include <iomanip>
 #include <geometry_msgs/msg/pose.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 #include <moveit/move_group_interface/move_group_interface.hpp>
@@ -262,16 +271,87 @@ int main(int argc, char ** argv)
       points.size(),
       last.sec,
       last.nanosec);
-    // Score the baseline path. This does not change the planner objective.
-    const auto weights = param<std::vector<double>>(node, "joint_weights", {1,1,10,10,1,1,1});
+    // Evaluate the retimed process segment only, using a frozen scene snapshot.
+    // This is a diagnostic, NOT a modification to MoveIt's optimization objective.
+    const auto application=param<std::string>(node,"application_name","baseline");
+    const auto weights=param<std::vector<double>>(node,"joint_weights",{1,1,10,10,1,1,1});
+    const panda_moveit::CostTerms coefficients{
+      param<double>(node,"joint_cost_weight",1.0),
+      param<double>(node,"singularity_cost_weight",0.0),
+      param<double>(node,"collision_cost_weight",0.0),
+      param<double>(node,"smoothness_cost_weight",0.0)};
+    const double safe=param<double>(node,"desired_clearance",0.10);
+    const double length=param<double>(node,"characteristic_length",0.30);
+    const double sigma_scale=param<double>(node,"singularity_scale",0.10);
+    const double step_scale=param<double>(node,"joint_step_scale",0.10);
+    const auto csv=param<std::string>(node,"cost_csv_path","");
+    for(double scale:{safe,length,sigma_scale,step_scale})
+      if(!std::isfinite(scale)||scale<=0) throw std::runtime_error("Cost scales must be positive");
     const auto& jt=cartesian_trajectory.joint_trajectory;
-    if(weights.size()!=jt.joint_names.size()) throw std::runtime_error("Joint weights do not match trajectory");
+    const auto model=move_group.getRobotModel();
+    const auto* jmg=model->getJointModelGroup(group);
+    const auto* link=model->getLinkModel(tcp_link);
+    if(!jmg||!link||jmg->getVariableNames()!=jt.joint_names||weights.size()!=jt.joint_names.size())
+      throw std::runtime_error("Expected trajectory joint order to match group and cost weights");
     Eigen::VectorXd w=Eigen::Map<const Eigen::VectorXd>(weights.data(),weights.size());
     Eigen::MatrixXd path_matrix(jt.points.size(),weights.size());
-    for(size_t k=0;k<jt.points.size();++k) path_matrix.row(k)=Eigen::Map<const Eigen::VectorXd>(jt.points[k].positions.data(),weights.size()).transpose();
-    double movement=0.0;
-    for(Eigen::Index k=1;k<path_matrix.rows();++k) movement+=panda_moveit::jointCost(path_matrix.row(k).transpose(),path_matrix.row(k-1).transpose(),w);
-    RCLCPP_INFO(node->get_logger(),"Baseline weighted movement %.6f; smoothness %.6f",movement,panda_moveit::smoothnessCost(path_matrix));
+    for(size_t k=0;k<jt.points.size();++k)
+      path_matrix.row(k)=Eigen::Map<const Eigen::VectorXd>(jt.points[k].positions.data(),weights.size()).transpose();
+    double movement=0;
+    for(Eigen::Index k=1;k<path_matrix.rows();++k)
+      movement+=panda_moveit::jointCost(path_matrix.row(k).transpose(),path_matrix.row(k-1).transpose(),w);
+
+    auto client=node->create_client<moveit_msgs::srv::GetPlanningScene>("/get_planning_scene");
+    if(!client->wait_for_service(std::chrono::seconds(10))) throw std::runtime_error("No /get_planning_scene service");
+    auto request=std::make_shared<moveit_msgs::srv::GetPlanningScene::Request>();
+    using C=moveit_msgs::msg::PlanningSceneComponents;
+    request->components.components=C::SCENE_SETTINGS|C::ROBOT_STATE|C::ROBOT_STATE_ATTACHED_OBJECTS|
+      C::WORLD_OBJECT_NAMES|C::WORLD_OBJECT_GEOMETRY|C::OCTOMAP|C::TRANSFORMS|C::ALLOWED_COLLISION_MATRIX|C::LINK_PADDING_AND_SCALING;
+    auto future=client->async_send_request(request);
+    if(future.wait_for(std::chrono::seconds(10))!=std::future_status::ready)
+      throw std::runtime_error("Planning scene request timed out");
+    planning_scene::PlanningScene scene(model);
+    const auto snapshot=future.get()->scene;
+    if(snapshot.is_diff) throw std::runtime_error("Expected a full planning scene");
+    scene.setPlanningSceneMsg(snapshot);
+    moveit::core::RobotState state(scene.getCurrentState());
+    double singularity=0, clearance=0;
+    double min_distance=std::numeric_limits<double>::infinity();
+    size_t invalid_samples=0;
+    for(const auto& point:jt.points) {
+      state.setVariablePositions(jt.joint_names,point.positions);
+      state.update();
+      Eigen::MatrixXd jac;
+      if(!state.getJacobian(jmg,link,Eigen::Vector3d::Zero(),jac))
+        throw std::runtime_error("Cannot compute TCP Jacobian");
+      // Convert angular rows to a comparable translational scale.
+      jac.bottomRows(3)*=length;
+      singularity+=panda_moveit::singularityCost(jac)*sigma_scale*sigma_scale;
+      const auto measured=panda_moveit::measureClearance(scene,state);
+      if(measured.colliding||!state.satisfiesBounds()) ++invalid_samples;
+      min_distance=std::min(min_distance,measured.distance);
+      clearance+=panda_moveit::collisionCost(measured.distance,safe)/(safe*safe);
+    }
+    const double n=static_cast<double>(jt.points.size());
+    const panda_moveit::CostTerms terms{
+      movement/((n-1)*step_scale*step_scale),
+      singularity/n,
+      clearance/n,
+      panda_moveit::smoothnessCost(path_matrix)/(std::max(1.0,n-2)*step_scale*step_scale)};
+    const double total=panda_moveit::combinedCost(terms,coefficients);
+    RCLCPP_INFO(node->get_logger(),"Application %s (SCORING ONLY)",application.c_str());
+    RCLCPP_INFO(node->get_logger(),"Normalized terms: joint=%.8f singularity=%.8f clearance=%.8f smoothness=%.8f",terms[0],terms[1],terms[2],terms[3]);
+    RCLCPP_INFO(node->get_logger(),"Weights: %.3f %.3f %.3f %.3f; total=%.8f; min_world_clearance=%.6g m; invalid_samples=%zu",coefficients[0],coefficients[1],coefficients[2],coefficients[3],total,min_distance,invalid_samples);
+    if(!csv.empty()) {
+      std::ofstream out(csv);
+      if(!out) throw std::runtime_error("Cannot open cost CSV");
+      out<<std::setprecision(16)<<"application,joint,singularity,clearance,smoothness,total,min_world_clearance_m,invalid_samples\n"
+         <<application<<","<<terms[0]<<","<<terms[1]<<","<<terms[2]<<","<<terms[3]<<","<<total<<","<<min_distance<<","<<invalid_samples<<"\n";
+      out.flush();
+      if(!out) throw std::runtime_error("Cannot write cost CSV");
+    }
+    if(invalid_samples) throw std::runtime_error("Retimed process path contains invalid sampled states; preview rejected");
+    // Sample checks are not continuous collision or Cartesian accuracy validation.
     // 9. Publish both segments for RViz preview.
     display_msg.trajectory.push_back(cartesian_trajectory);
     display_publisher->publish(display_msg);

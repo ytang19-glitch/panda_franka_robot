@@ -7,6 +7,7 @@
 #include <moveit_msgs/msg/collision_object.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <chrono>
+#include <future>
 #include <thread>
 #include <fstream>
 #include <iomanip>
