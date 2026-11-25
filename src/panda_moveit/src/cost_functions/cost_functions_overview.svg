@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="660" viewBox="0 0 1100 660">
+<rect width="1100" height="660" rx="18" fill="#f8fafc"/>
+<g font-family="Arial,sans-serif" fill="#172b42">
+<text x="36" y="45" font-size="25" font-weight="bold">Cost-aware robotic motion planning</text>
+<text x="36" y="72" font-size="15" fill="#526579">Conceptual illustration · fixed Cartesian task, alternative joint configurations</text>
+<rect x="30" y="96" width="510" height="344" rx="12" fill="white" stroke="#cbd5e1"/>
+<text x="50" y="125" font-size="18" font-weight="bold">A  |  Robot and planning scene</text>
+<rect x="54" y="367" width="462" height="20" rx="3" fill="#94a3b8"/>
+<rect x="120" y="338" width="70" height="29" rx="4" fill="#334155"/>
+<path d="M155 340 L184 205 L310 205 L365 282 L438 282" fill="none" stroke="#e18b79" stroke-width="13" stroke-dasharray="10 7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M155 340 L110 240 L220 158 L365 218 L438 282" fill="none" stroke="#147d83" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="155" cy="340" r="12" fill="#e2e8f0" stroke="#147d83" stroke-width="3"/><circle cx="110" cy="240" r="12" fill="#e2e8f0" stroke="#147d83" stroke-width="3"/><circle cx="220" cy="158" r="12" fill="#e2e8f0" stroke="#147d83" stroke-width="3"/><circle cx="365" cy="218" r="12" fill="#e2e8f0" stroke="#147d83" stroke-width="3"/><circle cx="438" cy="282" r="12" fill="#e2e8f0" stroke="#147d83" stroke-width="3"/>
+<rect x="278" y="278" width="54" height="89" rx="3" fill="#64748b"/>
+<rect x="263" y="263" width="84" height="104" rx="8" fill="none" stroke="#d97706" stroke-width="2" stroke-dasharray="5 5"/>
+<text x="244" y="405" font-size="13">Clamp + clearance zone</text>
+<path d="M438 282 L490 282" stroke="#2563eb" stroke-width="3" stroke-dasharray="5 4"/>
+<circle cx="438" cy="282" r="5" fill="#2563eb"/><text x="405" y="263" font-size="12">Same TCP</text>
+<path d="M52 422h26" stroke="#147d83" stroke-width="5"/><text x="85" y="426" font-size="12">Preferred configuration</text>
+<path d="M281 422h26" stroke="#e18b79" stroke-width="5" stroke-dasharray="6 4"/><text x="314" y="426" font-size="12">Alternative candidate</text>
+<rect x="556" y="96" width="514" height="344" rx="12" fill="white" stroke="#cbd5e1"/>
+<text x="576" y="125" font-size="18" font-weight="bold">B  |  Four numerical objectives</text>
+<g transform="translate(574 142)"><rect width="230" height="136" rx="8" fill="#f1f5f9"/><text x="12" y="20" font-size="14" font-weight="bold">Joint deviation</text><text x="12" y="39" font-size="12">Jq = weighted squared error</text><g transform="translate(17 40) scale(1.35 .85)"><path d="M12 8 V84 H140" stroke="#94a3b8" fill="none"/><path d="M12 18 Q65 150 118 18" fill="none" stroke="#147d83" stroke-width="2.5"/></g><text x="115" y="126" text-anchor="middle" font-size="11">joint deviation</text></g><g transform="translate(822 142)"><rect width="230" height="136" rx="8" fill="#f1f5f9"/><text x="12" y="20" font-size="14" font-weight="bold">Singularity</text><text x="12" y="39" font-size="12">Js = 1 / (σmin² + ε)</text><g transform="translate(17 40) scale(1.35 .85)"><path d="M12 8 V84 H140" stroke="#94a3b8" fill="none"/><path d="M12 18 C20 60 42 77 118 82" fill="none" stroke="#147d83" stroke-width="2.5"/></g><text x="115" y="126" text-anchor="middle" font-size="11">σmin</text></g><g transform="translate(574 288)"><rect width="230" height="136" rx="8" fill="#f1f5f9"/><text x="12" y="20" font-size="14" font-weight="bold">Collision clearance</text><text x="12" y="39" font-size="12">Jc = max(0, dsafe − d)²</text><g transform="translate(17 40) scale(1.35 .85)"><path d="M12 8 V84 H140" stroke="#94a3b8" fill="none"/><path d="M12 18 Q50 84 75 84 L118 84" fill="none" stroke="#147d83" stroke-width="2.5"/></g><text x="115" y="126" text-anchor="middle" font-size="11">clearance d</text></g><g transform="translate(822 288)"><rect width="230" height="136" rx="8" fill="#f1f5f9"/><text x="12" y="20" font-size="14" font-weight="bold">Path smoothness</text><text x="12" y="39" font-size="12">Jsm = squared second differences</text><g transform="translate(17 40) scale(1.35 .85)"><path d="M12 8 V84 H140" stroke="#94a3b8" fill="none"/><path d="M12 70 L35 25 L60 70 L84 25 L118 70" fill="none" stroke="#e18b79" stroke-width="2.5"/><path d="M12 70 L118 25" stroke="#147d83" stroke-width="2.5" fill="none"/></g><text x="115" y="126" text-anchor="middle" font-size="11">waypoint index</text></g>
+<rect x="30" y="456" width="1040" height="170" rx="12" fill="white" stroke="#cbd5e1"/>
+<text x="50" y="485" font-size="18" font-weight="bold">C  |  From candidate path to controller reference</text>
+<g transform="translate(55 500)"><path d="M0 87V10 M0 87H210" stroke="#94a3b8" fill="none"/><path d="M5 75 L45 20 L85 65 L125 15 L165 45 L205 10" fill="none" stroke="#e18b79" stroke-width="3" stroke-dasharray="6 4"/><path d="M5 75 Q65 55 105 40 T205 10" fill="none" stroke="#147d83" stroke-width="4"/><text x="5" y="105" font-size="12">Joint path (schematic)</text></g>
+<text x="305" y="525" font-size="15" font-weight="bold">Custom optimizer</text><text x="305" y="548" font-size="13">Minimize weighted costs</text><text x="305" y="570" font-size="13">Preserve TCP task constraints</text>
+<path d="M498 545h40l-8-6m8 6-8 6" stroke="#64748b" fill="none" stroke-width="2"/>
+<text x="555" y="525" font-size="15" font-weight="bold">Validate and retime</text><text x="555" y="548" font-size="13">Collision and joint limits</text><text x="555" y="570" font-size="13">Velocity and acceleration</text>
+<path d="M745 545h40l-8-6m8 6-8 6" stroke="#64748b" fill="none" stroke-width="2"/>
+<text x="800" y="525" font-size="15" font-weight="bold">NMPC / joint controller</text><text x="800" y="548" font-size="13">Track timed joint reference</text><text x="800" y="570" font-size="13">Gazebo or physical FR3</text>
+<text x="36" y="648" font-size="12" fill="#526579">Illustrative geometry and curves, not measured results. Soft costs do not guarantee safety.</text>
+</g></svg>
