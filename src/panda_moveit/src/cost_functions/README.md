@@ -56,6 +56,16 @@ The function computes singular values using Eigen JacobiSVD. For a Jacobian with
 
 Use a consistent Jacobian convention and translational/rotational scaling when comparing candidates. A soft penalty alone does not guarantee singularity avoidance.
 
+### Robot example: avoiding near-singular configurations
+
+![Bent and nearly extended arm with illustrative singularity costs](singularity_cost_example.svg)
+
+Assume a consistent Jacobian convention, $\epsilon=10^{-6}$, and hypothetical minimum singular values of 0.20 and 0.02.
+
+$J_s(A)=\frac{1}{0.20^2+10^{-6}}\approx25,\qquad J_s(B)=\frac{1}{0.02^2+10^{-6}}\approx2494$
+
+The near-singular candidate receives a much higher penalty. The arm drawings illustrate the idea; the values are not calculated from their geometry. A bent arm is not automatically nonsingular: the actual Jacobian must be evaluated.
+
 ## 4. Collision cost
 
 $$J_c=\max(0,d_{\mathrm{safe}}-d)^2$$
@@ -73,6 +83,16 @@ Applications include avoiding clamps, fixtures and other obstacles during roboti
 
 The function does not compute distances or detect collisions. A caller must obtain valid clearance information from the planning scene and separately reject colliding configurations. Do not assume a distance backend returns signed penetration distances.
 
+### Robot example: avoiding a welding clamp
+
+![Robot arm with insufficient and adequate clearance from a clamp](collision_cost_example.svg)
+
+For a desired clearance of 0.05 m, candidate A passes 0.02 m from the fixture and candidate B passes 0.10 m away.
+
+$J_c(A)=(0.05-0.02)^2=0.0009,\qquad J_c(B)=0$
+
+The clearance cost favors candidate B, subject to task feasibility. A collision-free path still requires independent collision checks across interpolated states.
+
 ## 5. Smoothness cost
 
 For a path with one joint configuration per matrix row:
@@ -82,6 +102,21 @@ $$J_{\mathrm{sm}}=\sum_{k=1}^{N-1}\|q_{k+1}-2q_k+q_{k-1}\|_2^2$$
 The function penalizes changes in successive joint increments. A constant-increment path has zero cost; abrupt changes produce a larger cost. Paths with fewer than three rows return zero.
 
 This is geometric smoothness, not a physical acceleration or jerk constraint. Time parameterization and dynamic limit checks remain separate.
+
+### Robot example: reducing abrupt joint changes
+
+![Robot arm and comparison of irregular and uniform joint increments](smoothness_cost_example.svg)
+
+Consider one joint along four waypoints, with every other joint fixed.
+
+| Candidate | Joint angles (rad) | Second differences (rad) | Cost |
+| --- | --- | --- | ---: |
+| A | 0, 0.1, 0.5, 0.6 | 0.3, -0.3 | 0.18 |
+| B | 0, 0.2, 0.4, 0.6 | 0, 0 | 0 |
+
+$J_{\mathrm{sm}}(A)=0.3^2+(-0.3)^2=0.18,\qquad J_{\mathrm{sm}}(B)=0$
+
+Candidate B has uniform joint increments. These hypothetical paths share joint endpoints but are not verified to follow the same Cartesian path. The penalty is geometric; it does not by itself enforce acceleration limits.
 
 ## 6. Combined optimization objective
 
